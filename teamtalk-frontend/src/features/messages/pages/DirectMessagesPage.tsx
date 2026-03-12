@@ -19,6 +19,7 @@ import { cn, getUserRoles } from '@/utils';
 import type { User, Message } from '@/types';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string || '/api').replace(/\/api$/, '');
+const CALL_STORAGE_KEY = 'teamtalk.activeCall';
 
 const STATUS_DOT: Record<string, string> = {
   online: 'bg-emerald-500', away: 'bg-amber-500',
@@ -167,6 +168,9 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
       await signalRService.joinVoiceChannel(channelId);
       setJoined(true);
       onNotif('🔊 Vous avez rejoint l\'appel vocal');
+      try {
+        localStorage.setItem(CALL_STORAGE_KEY, JSON.stringify({ kind: 'group', channelId, ts: Date.now() }));
+      } catch { /* ignore */ }
     } catch { /* mic denied */ }
   }, [channelId, onNotif]);
 
@@ -182,6 +186,13 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
     await signalRService.leaveVoiceChannel(channelId);
     setJoined(false); setParticipants([]);
     onNotif('👋 Vous avez quitté l\'appel vocal');
+    try {
+      const raw = localStorage.getItem(CALL_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw) as { kind?: string; channelId?: string };
+        if (data.kind === 'group' && data.channelId === channelId) localStorage.removeItem(CALL_STORAGE_KEY);
+      }
+    } catch { /* ignore */ }
   }, [channelId, onNotif, closePc]);
 
   const toggleMic = useCallback(() => {
@@ -345,6 +356,15 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
     if (autoJoin && !joinedRef.current) join();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoJoin]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setRemoteVideos(prev =>
+        prev.filter(v => v.stream.getTracks().some(t => t.readyState === 'live'))
+      );
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const layoutParticipants = useMemo<Participant[]>(() => {
     const map = new Map<string, Participant>();
@@ -1159,6 +1179,22 @@ const DirectMessagesPage: React.FC = () => {
     }).finally(() => setIsLoading(false));
   }, [me?.id]);
 
+  useEffect(() => {
+    if (!users.length) return;
+    try {
+      const raw = localStorage.getItem(CALL_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as { kind?: string; peerId?: string };
+      if (data.kind !== 'dm' || !data.peerId) return;
+      const peer = users.find(u => u.id === data.peerId);
+      if (!peer) return;
+      setActiveDM(peer);
+      setActiveGroup(null);
+      setCallNotifs([]);
+      setCallPeer(peer);
+    } catch { /* ignore */ }
+  }, [users]);
+
   const callNotifCounterRef = useRef(0);
   const addCallNotif = useCallback((text: string) => {
     setCallNotifs(prev => [...prev, { id: `cn-${++callNotifCounterRef.current}`, text, ts: new Date().toISOString() }]);
@@ -1166,11 +1202,25 @@ const DirectMessagesPage: React.FC = () => {
 
   // Capture navigation state (joinGroupChannelId) into state, then clear nav state
   useEffect(() => {
-    const joinChannelId = (location.state as { joinGroupChannelId?: string } | null)?.joinGroupChannelId;
-    if (!joinChannelId) return;
-    setPendingVoiceJoin(joinChannelId);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [location.state, location.pathname, navigate]);
+    const state = location.state as { joinGroupChannelId?: string; restoreDmPeerId?: string } | null;
+    const joinChannelId = state?.joinGroupChannelId;
+    const restoreDmPeerId = state?.restoreDmPeerId;
+    if (joinChannelId) {
+      setPendingVoiceJoin(joinChannelId);
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
+    if (restoreDmPeerId) {
+      const peer = allUsers.find(u => u.id === restoreDmPeerId);
+      if (peer) {
+        setActiveDM(peer);
+        setActiveGroup(null);
+        setCallNotifs([]);
+        setCallPeer(peer);
+      }
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate, allUsers]);
 
   // Open DM/Group from notifications (openChannelId)
   useEffect(() => {
@@ -1209,6 +1259,16 @@ const DirectMessagesPage: React.FC = () => {
       setAutoJoinGroupChannelId(pendingVoiceJoin);
     }
   }, [groups, pendingVoiceJoin]);
+
+  useEffect(() => {
+    if (pendingVoiceJoin) return;
+    try {
+      const raw = localStorage.getItem(CALL_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as { kind?: string; channelId?: string };
+      if (data.kind === 'group' && data.channelId) setPendingVoiceJoin(data.channelId);
+    } catch { /* ignore */ }
+  }, [pendingVoiceJoin]);
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase();

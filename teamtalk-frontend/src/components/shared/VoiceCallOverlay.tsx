@@ -13,6 +13,7 @@ const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
+const CALL_STORAGE_KEY = 'teamtalk.activeCall';
 
 export interface VoiceCallOverlayProps {
   outgoingPeer?: User;
@@ -112,6 +113,21 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
 
   const peer     = outgoingPeer ?? allUsers.find(u => u.id === incomingCallerId);
   const targetId = outgoingPeer?.id ?? incomingCallerId ?? '';
+  const clearStoredCall = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(CALL_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as { kind?: string; peerId?: string };
+      if (data.kind === 'dm' && data.peerId === targetId) localStorage.removeItem(CALL_STORAGE_KEY);
+    } catch { /* ignore */ }
+  }, [targetId]);
+
+  useEffect(() => {
+    if (callState !== 'active' || !targetId) return;
+    try {
+      localStorage.setItem(CALL_STORAGE_KEY, JSON.stringify({ kind: 'dm', peerId: targetId, ts: Date.now() }));
+    } catch { /* ignore */ }
+  }, [callState, targetId]);
 
   // ── Ringing ────────────────────────────────────────────
   useEffect(() => {
@@ -222,6 +238,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
 
   const hangUp = async () => {
     stopRing();
+    clearStoredCall();
     const finalDuration = durationRef.current;
     clearInterval(timerRef.current ?? 0);
     // Stop all local media
@@ -235,7 +252,10 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   };
 
   const rejectIncoming = async () => {
-    stopRing(); await signalRService.rejectCall(targetId); onEnd();
+    stopRing();
+    clearStoredCall();
+    await signalRService.rejectCall(targetId);
+    onEnd();
   };
 
   // ── Webcam ───────────────────────────────────────────
@@ -307,8 +327,8 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
       await pcRef.current.setRemoteDescription(JSON.parse(data.answer));
       setCallState('active'); startTimer(); onCallStarted?.();
     };
-    const onRejected = () => { stopRing(); onEnd(); };
-    const onEnded    = () => { stopRing(); onCallEnded?.(durationRef.current); onEnd(); };
+    const onRejected = () => { stopRing(); clearStoredCall(); onEnd(); };
+    const onEnded    = () => { stopRing(); clearStoredCall(); onCallEnded?.(durationRef.current); onEnd(); };
     const onIce      = async (data: { candidate: string }) => {
       try { await pcRef.current?.addIceCandidate(JSON.parse(data.candidate)); } catch {}
     };

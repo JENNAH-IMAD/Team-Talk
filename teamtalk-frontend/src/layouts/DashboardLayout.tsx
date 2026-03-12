@@ -28,6 +28,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; dot: string }[] = [
   { value: 'donotdisturb', label: 'Do Not Disturb', dot: 'bg-red-500'     },
   { value: 'offline',      label: 'Offline',        dot: 'bg-gray-400'    },
 ];
+const CALL_STORAGE_KEY = 'teamtalk.activeCall';
 
 // ── Inline Create Channel ──────────────────────────────────
 interface InlineCreateChannelProps {
@@ -452,6 +453,7 @@ const Navbar: React.FC = () => {
 // ═══════════════════════════════════════════════════════════
 export const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user: me } = useAuth();
   const [incomingCall, setIncomingCall] = useState<{ callerId: string; offer: string } | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -468,6 +470,30 @@ export const DashboardLayout: React.FC = () => {
       allUsersRef.current = r.data;
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CALL_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as { kind?: string; channelId?: string; peerId?: string };
+      if (data.kind === 'channel' && data.channelId) {
+        const target = `/dashboard/chat/${data.channelId}`;
+        if (location.pathname !== target) navigate(target, { replace: true });
+        return;
+      }
+      if (data.kind === 'group' && data.channelId) {
+        if (!location.pathname.startsWith('/dashboard/messages')) {
+          navigate('/dashboard/messages', { replace: true, state: { joinGroupChannelId: data.channelId } });
+        }
+        return;
+      }
+      if (data.kind === 'dm' && data.peerId) {
+        if (!location.pathname.startsWith('/dashboard/messages')) {
+          navigate('/dashboard/messages', { replace: true, state: { restoreDmPeerId: data.peerId } });
+        }
+      }
+    } catch { /* ignore */ }
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     const onIncoming = (data: { callerId: string; offer: string }) => setIncomingCall(data);

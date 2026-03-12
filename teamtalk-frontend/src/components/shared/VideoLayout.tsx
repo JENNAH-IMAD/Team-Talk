@@ -61,6 +61,9 @@ const VideoTile: React.FC<{
     .map(p => p[0]!.toUpperCase())
     .join('');
 
+  const hasLiveVideo =
+    (tile.stream?.stream?.getVideoTracks().some(t => t.readyState === 'live')) ?? false;
+
   return (
     <div
       onDoubleClick={onDoubleClick}
@@ -70,7 +73,7 @@ const VideoTile: React.FC<{
       style={{ background: '#101018' }}
       title="Double-click to focus"
     >
-      {tile.stream?.stream ? (
+      {tile.stream?.stream && hasLiveVideo ? (
         <video
           ref={el => { if (el && el.srcObject !== tile.stream?.stream) el.srcObject = tile.stream?.stream as MediaStream; }}
           autoPlay

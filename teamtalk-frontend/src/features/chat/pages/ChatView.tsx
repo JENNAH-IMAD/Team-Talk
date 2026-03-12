@@ -15,6 +15,7 @@ import type { User } from '@/types';
 
 // Base URL for static assets (uploads). Strip /api suffix so images go to /uploads/...
 const API_BASE = (import.meta.env.VITE_API_URL as string || '/api').replace(/\/api$/, '');
+const CALL_STORAGE_KEY = 'teamtalk.activeCall';
 
 // ── Notification système dans le chat ─────────────────────
 interface VoiceEvent { id: string; text: string; ts: string; }
@@ -128,6 +129,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
   const meIdRef          = useRef(meId);
   meIdRef.current        = meId;
   const pcsRef           = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const restoreAttemptedRef = useRef(false);
 
   const closePc = useCallback((peerId: string) => {
     const pc = pcsRef.current.get(peerId);
@@ -205,6 +207,9 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
       w.__TeamTalkVoiceChannels.add(channelId);
       await signalRService.joinVoiceChannel(channelId);
       setJoined(true);
+      try {
+        localStorage.setItem(CALL_STORAGE_KEY, JSON.stringify({ kind: 'channel', channelId, ts: Date.now() }));
+      } catch { /* ignore */ }
     } catch { /* mic denied */ }
   }, [channelId]);
 
@@ -219,6 +224,13 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
     await signalRService.leaveVoiceChannel(channelId);
     setJoined(false); setParticipantIds([]); setVideoOn(false); setScreenOn(false);
     setRemoteVideos([]); setLocalCamStream(null);
+    try {
+      const raw = localStorage.getItem(CALL_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw) as { kind?: string; channelId?: string };
+        if (data.kind === 'channel' && data.channelId === channelId) localStorage.removeItem(CALL_STORAGE_KEY);
+      }
+    } catch { /* ignore */ }
   }, [channelId, closePc]);
 
   const toggleMic = useCallback(() => {
@@ -380,6 +392,27 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
     window.addEventListener('Team Talk:leave-all-calls', handler);
     return () => window.removeEventListener('Team Talk:leave-all-calls', handler);
   }, [leave]);
+
+  useEffect(() => {
+    if (restoreAttemptedRef.current) return;
+    restoreAttemptedRef.current = true;
+    if (joinedRef.current || joined) return;
+    try {
+      const raw = localStorage.getItem(CALL_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as { kind?: string; channelId?: string };
+      if (data.kind === 'channel' && data.channelId === channelId) join();
+    } catch { /* ignore */ }
+  }, [channelId, join, joined]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setRemoteVideos(prev =>
+        prev.filter(v => v.stream.getTracks().some(t => t.readyState === 'live'))
+      );
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const layoutParticipants = useMemo<Participant[]>(() => {
     const map = new Map<string, Participant>();
