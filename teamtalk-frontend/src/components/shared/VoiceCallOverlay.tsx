@@ -95,6 +95,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'speaker' | 'screen' | 'focus'>('grid');
   const [focusedId, setFocusedId]   = useState<string | null>(null);
+  const lastModeRef = useRef<'grid' | 'speaker' | 'screen'>('grid');
   const [expanded, setExpanded]     = useState(false); // expand video area
 
   const pcRef           = useRef<RTCPeerConnection | null>(null);
@@ -384,6 +385,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
       isMuted: muted,
       isLive: sharing,
       isSpeaking: false,
+      avatarUrl: undefined,
       streams: [],
     };
     if (cameraOn && localCamStream) local.streams.push({ type: 'camera', stream: localCamStream });
@@ -397,6 +399,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
       isMuted: false,
       isLive: receivingScreen,
       isSpeaking: false,
+      avatarUrl: peer?.avatarUrl,
       streams: [],
     };
     if (remoteCamStream) remote.streams.push({ type: 'camera', stream: remoteCamStream });
@@ -405,12 +408,40 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
     return list;
   }, [muted, sharing, cameraOn, localCamStream, localScreenStream, receivingScreen, remoteCamStream, remoteScreenStream, peer]);
 
+  const hasScreenShare = layoutParticipants.some(p => p.streams.some(s => s.type === 'screen'));
+  const tileIds = useMemo(() => {
+    const ids: string[] = [];
+    layoutParticipants.forEach((p) => {
+      if (p.streams.length === 0) {
+        ids.push(`${p.id}:0`);
+        return;
+      }
+      p.streams.forEach((_, i) => ids.push(`${p.id}:${i}`));
+    });
+    return ids;
+  }, [layoutParticipants]);
+
+  useEffect(() => {
+    if (layoutMode === 'screen' && !hasScreenShare) setLayoutMode('grid');
+  }, [layoutMode, hasScreenShare]);
+
+  useEffect(() => {
+    if (!focusedId) return;
+    if (!tileIds.includes(focusedId)) {
+      setLayoutMode(lastModeRef.current);
+      setFocusedId(null);
+    }
+  }, [focusedId, tileIds]);
+
   const handleTileDoubleClick = (tileId: string) => {
     if (layoutMode === 'focus' && focusedId === tileId) {
-      setLayoutMode('grid'); setFocusedId(null);
+      setLayoutMode(lastModeRef.current);
+      setFocusedId(null);
       return;
     }
-    setLayoutMode('focus'); setFocusedId(tileId);
+    if (layoutMode !== 'focus') lastModeRef.current = layoutMode;
+    setLayoutMode('focus');
+    setFocusedId(tileId);
   };
 
   return (

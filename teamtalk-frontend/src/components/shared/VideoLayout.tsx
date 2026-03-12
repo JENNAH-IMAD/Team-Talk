@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { Mic, MicOff, Monitor, MonitorOff, Video, VideoOff, PhoneOff, Volume2, VolumeX } from 'lucide-react';
 
 export type ParticipantStream = {
@@ -14,6 +14,7 @@ export type Participant = {
   isMuted: boolean;
   isLive: boolean;
   isSpeaking: boolean;
+  avatarUrl?: string;
   streams: ParticipantStream[];
 };
 
@@ -53,6 +54,12 @@ const VideoTile: React.FC<{
   const showOutline = tile.participant.audioLevel > 0.05 || tile.participant.isSpeaking;
   const isMuted = tile.participant.isMuted;
   const live = tile.participant.isLive || tile.isScreen;
+  const initials = tile.participant.name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(p => p[0]!.toUpperCase())
+    .join('');
 
   return (
     <div
@@ -63,7 +70,7 @@ const VideoTile: React.FC<{
       style={{ background: '#101018' }}
       title="Double-click to focus"
     >
-      {tile.stream?.stream && (
+      {tile.stream?.stream ? (
         <video
           ref={el => { if (el && el.srcObject !== tile.stream?.stream) el.srcObject = tile.stream?.stream as MediaStream; }}
           autoPlay
@@ -71,6 +78,14 @@ const VideoTile: React.FC<{
           muted={tile.participant.id === 'local'}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: tile.isScreen ? 'contain' : 'cover' }}
         />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white text-lg font-bold">
+            {tile.participant.avatarUrl
+              ? <img src={tile.participant.avatarUrl} alt={tile.participant.name} className="w-full h-full rounded-full object-cover" />
+              : initials}
+          </div>
+        </div>
       )}
 
       {live && (
@@ -140,6 +155,23 @@ const VideoLayout: React.FC<VideoLayoutProps> = ({
 
   const activeSpeaker = tiles.find(t => t.participant.audioLevel > 0.05 || t.participant.isSpeaking) || tiles[0];
   const focusTile = tiles.find(t => t.tileId === focusedId) || tiles[0];
+  const focusSubtitle = focusTile
+    ? `${focusTile.participant.name} - ${focusTile.isScreen ? "partage d'ecran" : 'camera principale'}`
+    : '';
+  const lastModeRef = useRef<VideoLayoutMode>('grid');
+
+  useEffect(() => {
+    if (mode !== 'focus') lastModeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (mode === 'focus') onTileDoubleClick(focusedId ?? '');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [mode, focusedId, onTileDoubleClick]);
 
   const gridCols = Math.ceil(Math.sqrt(Math.max(tiles.length, 1)));
 
@@ -148,16 +180,16 @@ const VideoLayout: React.FC<VideoLayoutProps> = ({
       <div className="flex-1 min-h-0 px-3 pb-3">
         {mode === 'speaker' && activeSpeaker ? (
           <div className="flex flex-col h-full gap-2">
-            <div className="flex-1 min-h-0">
+            <div className="relative" style={{ height: '75%' }}>
               <VideoTile
                 tile={activeSpeaker}
                 focused={activeSpeaker.tileId === focusedId}
                 onDoubleClick={() => onTileDoubleClick(activeSpeaker.tileId)}
               />
             </div>
-            <div className="h-24 flex gap-2 overflow-x-auto">
+            <div className="flex gap-2 overflow-x-auto" style={{ height: '25%' }}>
               {tiles.filter(t => t.tileId !== activeSpeaker.tileId).map(t => (
-                <div key={t.tileId} className="w-36 flex-shrink-0">
+                <div key={t.tileId} className="h-full flex-shrink-0" style={{ width: 180 }}>
                   <VideoTile tile={t} focused={t.tileId === focusedId} onDoubleClick={() => onTileDoubleClick(t.tileId)} />
                 </div>
               ))}
@@ -172,9 +204,18 @@ const VideoLayout: React.FC<VideoLayoutProps> = ({
                 onDoubleClick={() => onTileDoubleClick(focusTile.tileId)}
               />
             </div>
-            <div className="absolute bottom-3 right-3 flex flex-col gap-2">
-              {tiles.filter(t => t.tileId !== focusTile.tileId).slice(0, 4).map(t => (
-                <div key={t.tileId} className="w-40 aspect-video">
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div className="w-24 h-24 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white text-2xl font-bold">
+                {focusTile.participant.avatarUrl
+                  ? <img src={focusTile.participant.avatarUrl} alt={focusTile.participant.name} className="w-full h-full rounded-full object-cover" />
+                  : focusTile.participant.name.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]!.toUpperCase()).join('')}
+              </div>
+              <div className="mt-3 text-white text-sm font-semibold">{focusSubtitle}</div>
+              <div className="text-xs text-white/70">Double-click pour revenir au mode precedent</div>
+            </div>
+            <div className="absolute bottom-3 right-3 flex gap-1.5">
+              {tiles.filter(t => t.tileId !== focusTile.tileId).slice(0, 6).map(t => (
+                <div key={t.tileId} style={{ width: 90, height: 60 }}>
                   <VideoTile tile={t} focused={false} onDoubleClick={() => onTileDoubleClick(t.tileId)} />
                 </div>
               ))}

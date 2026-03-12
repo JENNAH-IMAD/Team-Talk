@@ -113,6 +113,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
   const [screenOn, setScreenOn]     = useState(false);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'speaker' | 'screen' | 'focus'>('grid');
   const [focusedId, setFocusedId]   = useState<string | null>(null);
+  const lastModeRef = useRef<'grid' | 'speaker' | 'screen'>('grid');
   // Remote video streams — array to support multiple streams per peer (screen + webcam)
   const [remoteVideos, setRemoteVideos] = useState<Array<{
     peerId: string; trackId: string; stream: MediaStream; isScreen: boolean;
@@ -382,9 +383,9 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
 
   const layoutParticipants = useMemo<Participant[]>(() => {
     const map = new Map<string, Participant>();
-    const ensure = (id: string, name: string, isMuted = false) => {
+    const ensure = (id: string, name: string, avatarUrl?: string, isMuted = false) => {
       if (!map.has(id)) {
-        map.set(id, { id, name, audioLevel: 0, isMuted, isLive: false, isSpeaking: false, streams: [] });
+        map.set(id, { id, name, avatarUrl, audioLevel: 0, isMuted, isLive: false, isSpeaking: false, streams: [] });
       } else if (isMuted) {
         const p = map.get(id)!;
         p.isMuted = isMuted;
@@ -392,15 +393,25 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
       return map.get(id)!;
     };
 
+    const allIds = new Set(participantIds);
+    if (meId) allIds.add(meId);
+    allIds.forEach((id) => {
+      if (id === meId) return;
+      const user = usersMap[id];
+      ensure(id, user?.name ?? id, user?.avatarUrl);
+    });
+
     remoteVideos.forEach(v => {
-      const name = usersMap[v.peerId]?.name ?? v.peerId;
-      const p = ensure(v.peerId, name);
+      const user = usersMap[v.peerId];
+      const name = user?.name ?? v.peerId;
+      const p = ensure(v.peerId, name, user?.avatarUrl);
       p.streams.push({ type: v.isScreen ? 'screen' : 'camera', stream: v.stream, screenIndex: v.isScreen ? 1 : undefined });
       if (v.isScreen) p.isLive = true;
     });
 
-    const meName = usersMap[meId]?.name ?? 'Vous';
-    const me = ensure('local', meName, muted);
+    const meUser = usersMap[meId];
+    const meName = meUser?.name ?? 'Vous';
+    const me = ensure('local', meName, meUser?.avatarUrl, muted);
     if (videoOn && localCamStream) me.streams.push({ type: 'camera', stream: localCamStream });
     if (screenOn && localScreenStream) {
       me.streams.push({ type: 'screen', stream: localScreenStream, screenIndex: 1 });
@@ -409,13 +420,40 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
     return Array.from(map.values());
   }, [remoteVideos, usersMap, meId, muted, videoOn, localCamStream, screenOn, localScreenStream]);
 
-  const hasVideo = layoutParticipants.some(p => p.streams.length > 0);
+  const hasVideo = layoutParticipants.length > 0;
+  const hasScreenShare = layoutParticipants.some(p => p.streams.some(s => s.type === 'screen'));
+  const tileIds = useMemo(() => {
+    const ids: string[] = [];
+    layoutParticipants.forEach((p) => {
+      if (p.streams.length === 0) {
+        ids.push(`${p.id}:0`);
+        return;
+      }
+      p.streams.forEach((_, i) => ids.push(`${p.id}:${i}`));
+    });
+    return ids;
+  }, [layoutParticipants]);
+
+  useEffect(() => {
+    if (layoutMode === 'screen' && !hasScreenShare) setLayoutMode('grid');
+  }, [layoutMode, hasScreenShare]);
+
+  useEffect(() => {
+    if (!focusedId) return;
+    if (!tileIds.includes(focusedId)) {
+      setLayoutMode(lastModeRef.current);
+      setFocusedId(null);
+    }
+  }, [focusedId, tileIds]);
   const handleTileDoubleClick = (tileId: string) => {
     if (layoutMode === 'focus' && focusedId === tileId) {
-      setLayoutMode('grid'); setFocusedId(null);
+      setLayoutMode(lastModeRef.current);
+      setFocusedId(null);
       return;
     }
-    setLayoutMode('focus'); setFocusedId(tileId);
+    if (layoutMode !== 'focus') lastModeRef.current = layoutMode;
+    setLayoutMode('focus');
+    setFocusedId(tileId);
   };
 
   return (
@@ -428,7 +466,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
           Voice Channel
         </span>
         {participantIds.length > 0 && <span className="text-[11px] text-gray-500 ml-1">· {participantIds.length} in call</span>}
-        {screenOn && <span className="ml-auto flex items-center gap-1 text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded font-bold"><Monitor size={9}/> LIVE</span>}
+        {hasScreenShare && <span className="ml-auto flex items-center gap-1 text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded font-bold"><Monitor size={9}/> LIVE</span>}
       </div>
 
       <div className="flex-1 min-h-0">
@@ -590,11 +628,11 @@ const ChatView: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Close emoji picker when clicking outside
+  // Close emoji/gif picker when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (emojiRef.current && !emojiRef.current.contains(e.target as Node))
-        setShowEmoji(false);
+      if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) setShowEmoji(false);
+      if (gifRef.current && !gifRef.current.contains(e.target as Node)) setShowGif(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
