@@ -130,6 +130,40 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
   meIdRef.current        = meId;
   const pcsRef           = useRef<Map<string, RTCPeerConnection>>(new Map());
   const restoreAttemptedRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const prevScreenCountRef = useRef(0);
+
+  const playCue = useCallback((pattern: 'join' | 'leave' | 'share' | 'unshare' | 'mute' | 'unmute' | 'deafen' | 'undeafen') => {
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+      const ctx = audioCtxRef.current;
+      const now = ctx.currentTime;
+      const beep = (freq: number, at: number, dur: number, vol: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, at);
+        gain.gain.linearRampToValueAtTime(vol, at + 0.01);
+        gain.gain.linearRampToValueAtTime(0, at + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(at);
+        osc.stop(at + dur + 0.02);
+      };
+      const patterns: Record<typeof pattern, Array<[number, number, number]>> = {
+        join: [[620, 0, 0.12], [820, 0.14, 0.12]],
+        leave: [[520, 0, 0.12], [360, 0.14, 0.12]],
+        share: [[740, 0, 0.1], [980, 0.12, 0.1]],
+        unshare: [[980, 0, 0.1], [740, 0.12, 0.1]],
+        mute: [[320, 0, 0.12]],
+        unmute: [[520, 0, 0.12]],
+        deafen: [[280, 0, 0.12], [220, 0.14, 0.12]],
+        undeafen: [[420, 0, 0.12], [540, 0.14, 0.12]],
+      };
+      patterns[pattern].forEach(([freq, offset, dur]) => beep(freq, now + offset, dur, 0.18));
+    } catch { /* ignore */ }
+  }, []);
 
   const closePc = useCallback((peerId: string) => {
     const pc = pcsRef.current.get(peerId);
@@ -207,11 +241,12 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
       w.__TeamTalkVoiceChannels.add(channelId);
       await signalRService.joinVoiceChannel(channelId);
       setJoined(true);
+      playCue('join');
       try {
         localStorage.setItem(CALL_STORAGE_KEY, JSON.stringify({ kind: 'channel', channelId, ts: Date.now() }));
       } catch { /* ignore */ }
     } catch { /* mic denied */ }
-  }, [channelId]);
+  }, [channelId, playCue]);
 
   const leave = useCallback(async () => {
     pcsRef.current.forEach((_, pid) => closePc(pid));
@@ -224,6 +259,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     await signalRService.leaveVoiceChannel(channelId);
     setJoined(false); setParticipantIds([]); setVideoOn(false); setScreenOn(false);
     setRemoteVideos([]); setLocalCamStream(null);
+    playCue('leave');
     try {
       const raw = localStorage.getItem(CALL_STORAGE_KEY);
       if (raw) {
@@ -231,12 +267,13 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
         if (data.kind === 'channel' && data.channelId === channelId) localStorage.removeItem(CALL_STORAGE_KEY);
       }
     } catch { /* ignore */ }
-  }, [channelId, closePc]);
+  }, [channelId, closePc, playCue]);
 
   const toggleMic = useCallback(() => {
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = muted; });
     setMuted(m => !m);
-  }, [muted]);
+    playCue(muted ? 'unmute' : 'mute');
+  }, [muted, playCue]);
 
   const applySpeakerMute = useCallback((nextMuted: boolean) => {
     document.querySelectorAll<HTMLAudioElement>('audio[id^="vcpa-"]').forEach((el) => {
@@ -249,9 +286,10 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     setSpeakerOff(prev => {
       const next = !prev;
       applySpeakerMute(next);
+      playCue(next ? 'deafen' : 'undeafen');
       return next;
     });
-  }, [applySpeakerMute]);
+  }, [applySpeakerMute, playCue]);
 
   const toggleVideo = useCallback(async () => {
     if (!videoOn) {
@@ -302,6 +340,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
         pcsRef.current.forEach(pc => pc.addTrack(track, stream));
         setLocalScreenStream(stream);
         setScreenOn(true);
+        playCue('share');
       } catch { /* denied */ }
     } else {
       screenStreamRef.current?.getTracks().forEach(t => {
@@ -314,19 +353,22 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
       screenStreamRef.current = null;
       setLocalScreenStream(null);
       setScreenOn(false);
+      playCue('unshare');
     }
-  }, [screenOn]);
+  }, [screenOn, playCue]);
 
   // SignalR + WebRTC handlers — re-registered on every reconnect via signalRVersion
   useEffect(() => {
     const onJoined = (data: { channelId: string; userId: string }) => {
       if (data.channelId !== channelId) return;
       setParticipantIds(prev => prev.includes(data.userId) ? prev : [...prev, data.userId]);
+      if (joinedRef.current) playCue('join');
     };
     const onLeft = (data: { channelId: string; userId: string }) => {
       if (data.channelId !== channelId) return;
       setParticipantIds(prev => prev.filter(id => id !== data.userId));
       closePc(data.userId);
+      if (joinedRef.current) playCue('leave');
     };
     const onParticipants = async (data: { channelId: string; userIds: string[] }) => {
       if (data.channelId !== channelId || !joinedRef.current) return;
@@ -432,6 +474,15 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     }, 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const screenCount = remoteVideos.filter(v => v.isScreen).length;
+    if (joinedRef.current) {
+      if (screenCount > prevScreenCountRef.current) playCue('share');
+      if (screenCount < prevScreenCountRef.current) playCue('unshare');
+    }
+    prevScreenCountRef.current = screenCount;
+  }, [remoteVideos, playCue]);
 
   useEffect(() => {
     return () => {
