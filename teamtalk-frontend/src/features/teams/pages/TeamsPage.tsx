@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Plus, Edit2, Trash2, UserPlus, UserMinus, Users, X, Hash, Check, Lock, Volume2, Shield } from 'lucide-react';
@@ -10,7 +10,7 @@ import apiClient from '@/services/apiClient';
 import toast from 'react-hot-toast';
 import type { User, UserRole, Team } from '@/types';
 
-const TEAM_ICONS = ['?','??','??','??','??','??','???','??','??','??','??','??','??','??','???','??','???','???','???','?'];
+const TEAM_ICONS = ['⚡', '🎨', '💻', '🚀', '🧩', '📦', '🎯', '🛠️', '🧠', '🔒', '🌐', '📊', '📱', '🧪', '🧑‍💻', '🧭', '🛰️', '🧵', '🎥', '🏆'];
 const TEAM_COLORS = ['#6247ea','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899','#14b8a6'];
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -107,7 +107,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ teamId, teamName, curre
           <div className="flex items-center gap-2 bg-surface-100 dark:bg-surface-800 rounded-lg px-3 py-2 mb-3">
             <Search size={13} className="text-gray-400 flex-shrink-0" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, email or title�"
+              placeholder="Search by name, email or title…"
               className="bg-transparent border-none outline-none text-xs text-gray-900 dark:text-gray-100 w-full placeholder-gray-400 font-body"
               autoFocus />
             {search && <button onClick={() => setSearch('')}><X size={11} className="text-gray-400" /></button>}
@@ -156,7 +156,7 @@ const AddMemberModal: React.FC<AddMemberModalProps> = ({ teamId, teamName, curre
                     : 'bg-brand-500 text-white hover:bg-brand-600'
                   }`}
                 >
-                  {isAdded ? <><Check size={11} /> Added</> : adding === u.id ? '�' : <><UserPlus size={11} /> Add</>}
+                  {isAdded ? <><Check size={11} /> Added</> : adding === u.id ? '…' : <><UserPlus size={11} /> Add</>}
                 </button>
               </div>
             );
@@ -269,7 +269,7 @@ const ManageMembersModal: React.FC<ManageMembersModalProps> = ({ team, users, on
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={tab === 'add' ? 'Search users to add�' : 'Search team members�'}
+              placeholder={tab === 'add' ? 'Search users to add…' : 'Search team members…'}
               className="bg-transparent border-none outline-none text-xs text-gray-900 dark:text-gray-100 w-full placeholder-gray-400 font-body"
               autoFocus
             />
@@ -315,7 +315,7 @@ const ManageMembersModal: React.FC<ManageMembersModalProps> = ({ team, users, on
                       : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
                     }`}
                   >
-                    {isOwner ? 'Owner' : removing === u.id ? '�' : <><UserMinus size={11} /> Remove</>}
+                    {isOwner ? 'Owner' : removing === u.id ? '…' : <><UserMinus size={11} /> Remove</>}
                   </button>
                 </div>
               );
@@ -354,7 +354,7 @@ const ManageMembersModal: React.FC<ManageMembersModalProps> = ({ team, users, on
                       : 'bg-brand-500 text-white hover:bg-brand-600'
                     }`}
                   >
-                    {isAdded ? <><Check size={11} /> Added</> : adding === u.id ? '�' : <><UserPlus size={11} /> Add</>}
+                    {isAdded ? <><Check size={11} /> Added</> : adding === u.id ? '…' : <><UserPlus size={11} /> Add</>}
                   </button>
                 </div>
               );
@@ -537,10 +537,14 @@ const TeamsPage: React.FC = () => {
     return map;
   }, [allUsers]);
 
-  const canManageTeam = (team: Team) =>
-    isDirector || isAdmin || team.ownerId === me?.id;
+  const canManageTeam = (team: Team) => {
+    if (isDirector) return true;
+    if (!isManager) return false;
+    const myId = me?.id ?? '';
+    return team.ownerId === myId || team.members.includes(myId);
+  };
 
-  const canCreateTeam = isDirector || isAdmin || isManager;
+  const canCreateTeam = isDirector || isManager;
   const refreshTeams = () => { dispatch(fetchTeams()); };
 
   const manageMembersTeam = manageMembersTeamId
@@ -607,7 +611,7 @@ const TeamsPage: React.FC = () => {
               {teams.filter(t => t.ownerId === me?.id).length}
             </span>
           </div>
-          {(isDirector || isAdmin) && (
+          {isDirector && (
             <div className="flex items-center gap-2 bg-white dark:bg-surface-900 border border-subtle rounded-xl px-3 py-2">
               <Shield size={12} className="text-gray-400" />
               <span className="text-xs text-gray-500">Global access</span>
@@ -643,7 +647,7 @@ const TeamsPage: React.FC = () => {
                     <div className="font-bold text-[15px] text-gray-900 dark:text-gray-100 font-display">{team.name}</div>
                     <div className="text-[13px] text-gray-500">{team.description}</div>
                     <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
-                      <span>Owner: {isOwner ? 'You' : owner?.name ?? '�'}</span>
+                      <span>Owner: {isOwner ? 'You' : owner?.name ?? '—'}</span>
                       {isOwner && <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 font-semibold">Owner</span>}
                       {!canManage && <span className="px-2 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-gray-500">View only</span>}
                     </div>
@@ -655,7 +659,7 @@ const TeamsPage: React.FC = () => {
                       onClick={() => openEdit(team)}
                       icon={<Edit2 size={14} />}
                       disabled={!canManage}
-                      title={canManage ? 'Edit team' : 'Only owner/director/admin can edit'}
+                      title={canManage ? 'Edit team' : 'Only director or team manager can edit'}
                     />
                     <Button
                       variant="ghost"
@@ -663,7 +667,7 @@ const TeamsPage: React.FC = () => {
                       onClick={() => dispatch(deleteTeam(team.id))}
                       icon={<Trash2 size={14} />}
                       disabled={!canManage}
-                      title={canManage ? 'Delete team' : 'Only owner/director/admin can delete'}
+                      title={canManage ? 'Delete team' : 'Only director or team manager can delete'}
                     />
                   </div>
                 </div>
@@ -703,7 +707,7 @@ const TeamsPage: React.FC = () => {
                     icon={<Hash size={13} />}
                     onClick={() => setCreateChannelTeam(team)}
                     disabled={!canManage}
-                    title={canManage ? 'Add channel' : 'Only owner/director/admin can add channels'}
+                    title={canManage ? 'Add channel' : 'Only director or team manager can add channels'}
                   >
                     Add Channel
                   </Button>
@@ -713,7 +717,7 @@ const TeamsPage: React.FC = () => {
                     icon={<UserPlus size={13} />}
                     onClick={() => setAddMemberTeam(team)}
                     disabled={!canManage}
-                    title={canManage ? 'Add member' : 'Only owner/director/admin can add members'}
+                    title={canManage ? 'Add member' : 'Only director or team manager can add members'}
                   >
                     Add Member
                   </Button>
@@ -723,7 +727,7 @@ const TeamsPage: React.FC = () => {
                     icon={<Users size={13} />}
                     onClick={() => setManageMembersTeamId(team.id)}
                     disabled={!canManage}
-                    title={canManage ? 'Manage members' : 'Only owner/director/admin can manage members'}
+                    title={canManage ? 'Manage members' : 'Only director or team manager can manage members'}
                   >
                     Manage Members
                   </Button>
@@ -843,6 +847,7 @@ const TeamsPage: React.FC = () => {
 };
 
 export default TeamsPage;
+
 
 
 
