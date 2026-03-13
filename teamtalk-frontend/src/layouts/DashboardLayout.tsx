@@ -455,6 +455,7 @@ export const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user: me } = useAuth();
+  const restoreAttemptedRef = React.useRef(false);
   const [incomingCall, setIncomingCall] = useState<{ callerId: string; offer: string } | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const allUsersRef = React.useRef<User[]>([]);
@@ -472,6 +473,8 @@ export const DashboardLayout: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (restoreAttemptedRef.current) return;
+    restoreAttemptedRef.current = true;
     try {
       const raw = localStorage.getItem(CALL_STORAGE_KEY);
       if (!raw) return;

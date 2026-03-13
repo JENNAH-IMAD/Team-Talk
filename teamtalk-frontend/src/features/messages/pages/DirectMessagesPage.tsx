@@ -1174,7 +1174,11 @@ const DirectMessagesPage: React.FC = () => {
       apiClient.get<User[]>('/users'),
       apiClient.get<GroupDm[]>('/groups').catch(() => ({ data: [] as GroupDm[] })),
     ]).then(([usersRes, groupsRes]) => {
-      setUsers((usersRes.data as User[]).filter((u: User) => u.id !== me?.id));
+      const normalized = (usersRes.data as User[]).map((u) => ({
+        ...u,
+        status: (u.status ?? 'offline') as User['status'],
+      }));
+      setUsers(normalized.filter((u: User) => u.id !== me?.id));
       setGroups(groupsRes.data as GroupDm[]);
     }).finally(() => setIsLoading(false));
   }, [me?.id]);
