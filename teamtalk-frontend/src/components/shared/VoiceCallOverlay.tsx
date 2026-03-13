@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX,
-  Monitor, MonitorOff, Video, VideoOff, Maximize2, Minimize2,
+  Monitor, MonitorOff, Video, VideoOff,
 } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { signalRService } from '@/services/signalRService';
@@ -97,7 +97,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   const [layoutMode, setLayoutMode] = useState<'grid' | 'speaker' | 'screen' | 'focus'>('grid');
   const [focusedId, setFocusedId]   = useState<string | null>(null);
   const lastModeRef = useRef<'grid' | 'speaker' | 'screen'>('grid');
-  const [expanded, setExpanded]     = useState(false); // expand video area
+  const [panelHeight, setPanelHeight] = useState(360);
 
   const pcRef           = useRef<RTCPeerConnection | null>(null);
   const videoPcRef      = useRef<RTCPeerConnection | null>(null); // shared for screen + cam
@@ -394,8 +394,30 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   const toggleMic = () => { localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = muted; }); setMuted(m => !m); };
   const toggleSpeaker = () => { if (remoteAudioRef.current) remoteAudioRef.current.muted = !speakerOff; setSpeakerOff(s => !s); };
 
-  const panelWidth = expanded ? 580 : 320;
-  const panelHeight = expanded ? 420 : 320;
+  const panelWidth = 560;
+  const resizeStateRef = useRef<{ startY: number; startH: number } | null>(null);
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!resizeStateRef.current) return;
+    const next = resizeStateRef.current.startH + (e.clientY - resizeStateRef.current.startY);
+    setPanelHeight(Math.max(240, Math.min(next, 720)));
+  }, []);
+  const handleResizeEnd = useCallback(() => {
+    resizeStateRef.current = null;
+    window.removeEventListener('mousemove', handleResizeMove);
+    window.removeEventListener('mouseup', handleResizeEnd);
+  }, [handleResizeMove]);
+  const startResize = (e: React.MouseEvent) => {
+    resizeStateRef.current = { startY: e.clientY, startH: panelHeight };
+    window.addEventListener('mousemove', handleResizeMove);
+    window.addEventListener('mouseup', handleResizeEnd);
+  };
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('mousemove', handleResizeMove);
+      window.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [handleResizeMove, handleResizeEnd]);
   const layoutParticipants = useMemo<Participant[]>(() => {
     const list: Participant[] = [];
     const local: Participant = {
@@ -465,8 +487,9 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   };
 
   return (
-    <AnimatePresence mode="wait">
+    <>
       <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+      <AnimatePresence>
 
       {/* ── RINGING — small toast notification (top-right) ── */}
       {callState === 'ringing' && peer && (
@@ -512,8 +535,8 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
           animate={{ opacity: 1, y: 0, width: panelWidth }}
           exit={{ opacity: 0, y: 32 }}
           transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-          className="fixed bottom-5 right-5 z-50 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-          style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', width: panelWidth, height: panelHeight }}
+          className="fixed top-20 right-5 z-50 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+          style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', width: panelWidth, height: panelHeight, maxWidth: 'calc(100vw - 40px)' }}
         >
           <VideoLayout
             participants={layoutParticipants}
@@ -530,9 +553,16 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
             cameraOn={cameraOn}
             screenOn={sharing || receivingScreen}
           />
+          <div
+            onMouseDown={startResize}
+            className="h-3 cursor-row-resize flex items-center justify-center bg-black/40 border-t border-white/10"
+          >
+            <div className="w-10 h-1.5 rounded-full bg-white/20" />
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 };
 
