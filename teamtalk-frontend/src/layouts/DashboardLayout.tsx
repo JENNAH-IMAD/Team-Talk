@@ -95,6 +95,7 @@ const Sidebar: React.FC = () => {
     isLive?: boolean;
     status?: string;
   }>>>({});
+  const [usersById, setUsersById] = useState<Record<string, User>>({});
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
   });
@@ -113,6 +114,14 @@ const Sidebar: React.FC = () => {
   useEffect(() => { dispatch(fetchTeams()); dispatch(fetchNotifications()); }, [dispatch]);
 
   useEffect(() => {
+    apiClient.get<User[]>('/users').then(({ data }) => {
+      const map: Record<string, User> = {};
+      data.forEach((u) => { map[u.id] = u; });
+      setUsersById(map);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ channelId: string; users: Array<any> }>).detail;
       setVoiceUsersByChannel((prev) => ({ ...prev, [detail.channelId]: detail.users }));
@@ -120,6 +129,75 @@ const Sidebar: React.FC = () => {
     window.addEventListener('TeamTalk:voiceParticipants', handler);
     return () => window.removeEventListener('TeamTalk:voiceParticipants', handler);
   }, []);
+
+  useEffect(() => {
+    const removeFromAll = (prev: Record<string, string[]>, userId: string) => {
+      const next: Record<string, string[]> = {};
+      Object.entries(prev).forEach(([cid, ids]) => {
+        next[cid] = ids.filter((id) => id !== userId);
+      });
+      return next;
+    };
+
+    const onJoined = (data: { channelId: string; userId: string }) => {
+      setVoiceUsersByChannel((prev) => {
+        const current = Object.fromEntries(Object.entries(prev).map(([cid, users]) => [cid, users.map((u) => u.id)])) as Record<string, string[]>;
+        const cleaned = removeFromAll(current, data.userId);
+        const list = cleaned[data.channelId] ?? [];
+        if (list.includes(data.userId)) return prev;
+        const updatedIds = { ...cleaned, [data.channelId]: [...list, data.userId] };
+        const toUsers = (ids: string[]) => ids.map((id) => {
+          const u = usersById[id];
+          return {
+            id,
+            username: u?.name ?? id,
+            avatarUrl: u?.avatarUrl,
+            status: u?.status ?? 'offline',
+          };
+        });
+        const next: Record<string, Array<any>> = {};
+        Object.entries(updatedIds).forEach(([cid, ids]) => { next[cid] = toUsers(ids); });
+        return next;
+      });
+    };
+
+    const onLeft = (data: { channelId: string; userId: string }) => {
+      setVoiceUsersByChannel((prev) => {
+        const list = (prev[data.channelId] ?? []).filter((u) => u.id !== data.userId);
+        return { ...prev, [data.channelId]: list };
+      });
+    };
+
+    const onParticipants = (data: { channelId: string; userIds: string[] }) => {
+      setVoiceUsersByChannel((prev) => {
+        const current = Object.fromEntries(Object.entries(prev).map(([cid, users]) => [cid, users.map((u) => u.id)])) as Record<string, string[]>;
+        let cleaned = { ...current };
+        data.userIds.forEach((id) => { cleaned = removeFromAll(cleaned, id); });
+        cleaned[data.channelId] = data.userIds;
+        const toUsers = (ids: string[]) => ids.map((id) => {
+          const u = usersById[id];
+          return {
+            id,
+            username: u?.name ?? id,
+            avatarUrl: u?.avatarUrl,
+            status: u?.status ?? 'offline',
+          };
+        });
+        const next: Record<string, Array<any>> = {};
+        Object.entries(cleaned).forEach(([cid, ids]) => { next[cid] = toUsers(ids); });
+        return next;
+      });
+    };
+
+    signalRService.onUserJoinedVoice(onJoined);
+    signalRService.onUserLeftVoice(onLeft);
+    signalRService.onVoiceParticipants(onParticipants);
+    return () => {
+      signalRService.offEvent('UserJoinedVoice', onJoined as never);
+      signalRService.offEvent('UserLeftVoice', onLeft as never);
+      signalRService.offEvent('VoiceParticipants', onParticipants as never);
+    };
+  }, [usersById]);
 
   useEffect(() => {
     teams.forEach((team) => {
@@ -272,7 +350,8 @@ const Sidebar: React.FC = () => {
                   <>
                   {teamChannels.map((ch) => {
                     const isActive = activeChannel === ch.id && location.pathname.startsWith('/dashboard/chat');
-                    const voiceUsers = voiceUsersByChannel[ch.id] ?? [];
+                    const allowedIds = new Set([team.ownerId, ...(team.members ?? [])]);
+                    const voiceUsers = (voiceUsersByChannel[ch.id] ?? []).filter((u) => allowedIds.has(u.id));
                     return (
                         <div key={ch.id}>
                           <button
