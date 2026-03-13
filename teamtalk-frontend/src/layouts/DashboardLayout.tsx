@@ -159,6 +159,10 @@ const Sidebar: React.FC = () => {
     dispatch(setActiveChannel(channelId));
     navigate(`/dashboard/chat/${channelId}`);
   };
+  const handleVoiceChannelDoubleClick = (channelId: string) => {
+    try { sessionStorage.setItem('teamtalk.autoJoinVoiceChannel', channelId); } catch { /* ignore */ }
+    handleChannelClick(channelId);
+  };
 
   const handleLogout = () => { dispatch(logoutUser()); navigate('/login'); };
 
@@ -271,7 +275,9 @@ const Sidebar: React.FC = () => {
                     const voiceUsers = voiceUsersByChannel[ch.id] ?? [];
                     return (
                         <div key={ch.id}>
-                          <button onClick={() => handleChannelClick(ch.id)}
+                          <button
+                            onClick={() => handleChannelClick(ch.id)}
+                            onDoubleClick={() => ch.isVoice && handleVoiceChannelDoubleClick(ch.id)}
                             className={cn(
                               'w-full flex items-center gap-2 pl-8 pr-3 py-1.5 rounded-r-lg mr-2 text-[13px] transition-all duration-100',
                               isActive ? 'bg-brand-500/10 text-brand-500 dark:text-brand-300 font-semibold'

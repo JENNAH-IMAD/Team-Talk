@@ -467,6 +467,17 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
   }, [channelId, join, joined]);
 
   useEffect(() => {
+    if (joinedRef.current || joined) return;
+    try {
+      const target = sessionStorage.getItem('teamtalk.autoJoinVoiceChannel');
+      if (target && target === channelId) {
+        sessionStorage.removeItem('teamtalk.autoJoinVoiceChannel');
+        join();
+      }
+    } catch { /* ignore */ }
+  }, [channelId, join, joined]);
+
+  useEffect(() => {
     const interval = window.setInterval(() => {
       setRemoteVideos(prev =>
         prev.filter(v => v.stream.getTracks().some(t => t.readyState === 'live'))
