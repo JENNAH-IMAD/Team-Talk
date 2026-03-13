@@ -98,6 +98,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   const [focusedId, setFocusedId]   = useState<string | null>(null);
   const lastModeRef = useRef<'grid' | 'speaker' | 'screen'>('grid');
   const [panelHeight, setPanelHeight] = useState(360);
+  const [panelWidth, setPanelWidth] = useState(560);
 
   const pcRef           = useRef<RTCPeerConnection | null>(null);
   const videoPcRef      = useRef<RTCPeerConnection | null>(null); // shared for screen + cam
@@ -394,30 +395,43 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   const toggleMic = () => { localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = muted; }); setMuted(m => !m); };
   const toggleSpeaker = () => { if (remoteAudioRef.current) remoteAudioRef.current.muted = !speakerOff; setSpeakerOff(s => !s); };
 
-  const panelWidth = 560;
   const resizeStateRef = useRef<{ startY: number; startH: number } | null>(null);
+  const resizeXStateRef = useRef<{ startX: number; startW: number } | null>(null);
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!resizeStateRef.current) return;
     const next = resizeStateRef.current.startH + (e.clientY - resizeStateRef.current.startY);
     setPanelHeight(Math.max(240, Math.min(next, 720)));
   }, []);
+  const handleResizeMoveX = useCallback((e: MouseEvent) => {
+    if (!resizeXStateRef.current) return;
+    const next = resizeXStateRef.current.startW + (resizeXStateRef.current.startX - e.clientX);
+    setPanelWidth(Math.max(360, Math.min(next, 900)));
+  }, []);
   const handleResizeEnd = useCallback(() => {
     resizeStateRef.current = null;
+    resizeXStateRef.current = null;
     window.removeEventListener('mousemove', handleResizeMove);
+    window.removeEventListener('mousemove', handleResizeMoveX);
     window.removeEventListener('mouseup', handleResizeEnd);
-  }, [handleResizeMove]);
+  }, [handleResizeMove, handleResizeMoveX]);
   const startResize = (e: React.MouseEvent) => {
     resizeStateRef.current = { startY: e.clientY, startH: panelHeight };
     window.addEventListener('mousemove', handleResizeMove);
+    window.addEventListener('mouseup', handleResizeEnd);
+  };
+  const startResizeX = (e: React.MouseEvent) => {
+    resizeXStateRef.current = { startX: e.clientX, startW: panelWidth };
+    window.addEventListener('mousemove', handleResizeMoveX);
     window.addEventListener('mouseup', handleResizeEnd);
   };
 
   useEffect(() => {
     return () => {
       window.removeEventListener('mousemove', handleResizeMove);
+      window.removeEventListener('mousemove', handleResizeMoveX);
       window.removeEventListener('mouseup', handleResizeEnd);
     };
-  }, [handleResizeMove, handleResizeEnd]);
+  }, [handleResizeMove, handleResizeMoveX, handleResizeEnd]);
   const layoutParticipants = useMemo<Participant[]>(() => {
     const list: Participant[] = [];
     const local: Participant = {
@@ -560,8 +574,8 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
             <div className="w-10 h-1.5 rounded-full bg-white/20" />
           </div>
           <div
-            onMouseDown={startResize}
-            className="absolute top-2 -left-2 w-3 h-16 cursor-ew-resize"
+            onMouseDown={startResizeX}
+            className="absolute top-2 -left-2 w-3 h-24 cursor-ew-resize"
             style={{ touchAction: 'none' }}
           />
         </motion.div>
