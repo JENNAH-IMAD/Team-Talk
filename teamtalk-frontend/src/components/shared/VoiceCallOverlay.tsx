@@ -419,11 +419,6 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
     window.addEventListener('mousemove', handleResizeMove);
     window.addEventListener('mouseup', handleResizeEnd);
   };
-  const startResizeX = (e: React.MouseEvent) => {
-    resizeXStateRef.current = { startX: e.clientX, startW: panelWidth };
-    window.addEventListener('mousemove', handleResizeMoveX);
-    window.addEventListener('mouseup', handleResizeEnd);
-  };
   const startResizeDiag = (e: React.MouseEvent) => {
     resizeStateRef.current = { startY: e.clientY, startH: panelHeight };
     resizeXStateRef.current = { startX: e.clientX, startW: panelWidth };
@@ -581,7 +576,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
             <div className="w-10 h-1.5 rounded-full bg-white/20" />
           </div>
           <div
-            onMouseDown={startResizeX}
+            onMouseDown={startResizeDiag}
             className="absolute top-2 -left-2 w-3 h-24 cursor-ew-resize"
             style={{ touchAction: 'none' }}
           />
