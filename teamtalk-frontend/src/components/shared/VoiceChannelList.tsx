@@ -61,11 +61,11 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
             return (
               <div
                 key={u.id}
-                className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-white/5 transition-colors"
+                className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-surface-800/60 transition-colors"
               >
-                <div className="relative w-7 h-7 flex-shrink-0">
+                <div className="relative w-6 h-6 flex-shrink-0">
                   <div
-                    className={`w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-[11px] font-bold text-white ${u.isSpeaking ? 'voice-speaking' : ''}`}
+                    className={`w-6 h-6 rounded-full overflow-hidden flex items-center justify-center text-[10px] font-bold text-white ${u.isSpeaking ? 'voice-speaking' : ''}`}
                     style={{ backgroundColor: u.avatarUrl ? 'transparent' : colorFor(u.username) }}
                   >
                     {u.avatarUrl ? (
@@ -75,19 +75,23 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
                     )}
                   </div>
                   {u.isLive && (
-                    <div className="absolute -bottom-1 right-0 bg-red-500 text-white text-[8px] font-bold px-1 py-0.5 rounded">
+                    <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 py-0.5 rounded">
                       LIVE
                     </div>
                   )}
-                  <div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-2 border-surface-900 ${statusClass}`} />
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-surface-900 ${statusClass}`} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-[12px] truncate text-gray-200">{u.username}</div>
                 </div>
                 {u.isDeafened ? (
-                  <Headphones size={12} className="text-gray-500" />
+                  <span className="w-5 h-5 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center">
+                    <Headphones size={12} />
+                  </span>
                 ) : u.isMuted ? (
-                  <MicOff size={12} className="text-gray-500" />
+                  <span className="w-5 h-5 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center">
+                    <MicOff size={12} />
+                  </span>
                 ) : null}
               </div>
             );
