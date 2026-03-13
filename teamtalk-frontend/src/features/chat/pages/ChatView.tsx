@@ -5,7 +5,7 @@ import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
 import { useAppDispatch, useAppSelector, useAuth } from '@/hooks';
 import { signalRService, useSignalRVersion } from '@/services/signalRService';
 import { fetchMessages, sendMessage, setActiveChannel, editMessage, deleteMessage } from '@/store/slices/chatSlice';
-import { MessageBubble, GifPicker } from '@/components/shared';
+import { MessageBubble, GifPicker, VoiceChannelList } from '@/components/shared';
 import VideoLayout, { type Participant } from '@/components/shared/VideoLayout';
 import { Avatar, Loader } from '@/components/ui';
 import { cn } from '@/utils';
@@ -104,7 +104,7 @@ const ICE_SERVERS = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
-const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: Record<string, User> }> = ({ channelId, meId, usersMap }) => {
+const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meId: string; usersMap: Record<string, User> }> = ({ channelId, channelName, meId, usersMap }) => {
   const signalRVersion  = useSignalRVersion();
   const [joined, setJoined]         = useState(false);
   const [participantIds, setParticipantIds] = useState<string[]>([]);
@@ -467,6 +467,26 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
     return ids;
   }, [layoutParticipants]);
 
+  const voiceUsers = useMemo(() => {
+    return participantIds.map((id) => {
+      const user = usersMap[id];
+      const isLocal = id === meId;
+      const isLive = isLocal
+        ? screenOn
+        : remoteVideos.some(v => v.peerId === id && v.isScreen);
+      return {
+        id,
+        username: user?.name ?? id,
+        avatarUrl: user?.avatarUrl,
+        isSpeaking: false,
+        isMuted: isLocal ? muted : false,
+        isDeafened: false,
+        isLive,
+        status: user?.status ?? 'offline',
+      };
+    });
+  }, [participantIds, usersMap, meId, muted, screenOn, remoteVideos]);
+
   useEffect(() => {
     if (layoutMode === 'screen' && !hasScreenShare) setLayoutMode('grid');
   }, [layoutMode, hasScreenShare]);
@@ -504,21 +524,30 @@ const VoiceChannelPanel: React.FC<{ channelId: string; meId: string; usersMap: R
 
       <div className="flex-1 min-h-0">
         {joined ? (
-          <VideoLayout
-            participants={layoutParticipants}
-            mode={layoutMode}
-            focusedId={focusedId}
-            onTileDoubleClick={handleTileDoubleClick}
-            onToggleMute={toggleMic}
-            onToggleSpeaker={() => setSpeakerOff(s => !s)}
-            onToggleCamera={toggleVideo}
-            onToggleScreen={toggleScreen}
-            onEndCall={leave}
-            muted={muted}
-            speakerOff={speakerOff}
-            cameraOn={videoOn}
-            screenOn={screenOn}
-          />
+          <div className="flex flex-col h-full min-h-0">
+            <div className="px-2 pt-2">
+              <VoiceChannelList
+                channel={{ id: channelId, name: channelName ?? 'Voice channel', users: voiceUsers }}
+              />
+            </div>
+            <div className="flex-1 min-h-0">
+              <VideoLayout
+                participants={layoutParticipants}
+                mode={layoutMode}
+                focusedId={focusedId}
+                onTileDoubleClick={handleTileDoubleClick}
+                onToggleMute={toggleMic}
+                onToggleSpeaker={() => setSpeakerOff(s => !s)}
+                onToggleCamera={toggleVideo}
+                onToggleScreen={toggleScreen}
+                onEndCall={leave}
+                muted={muted}
+                speakerOff={speakerOff}
+                cameraOn={videoOn}
+                screenOn={screenOn}
+              />
+            </div>
+          </div>
         ) : (
           <div className="px-4 pb-3">
             <button onClick={join} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold transition-colors">
@@ -780,7 +809,7 @@ const ChatView: React.FC = () => {
         {channel.isVoice && channelId && (
           <>
             <div style={{ height: voiceHeight, flexShrink: 0, overflow: 'hidden' }}>
-              <VoiceChannelPanel channelId={channelId} meId={user?.id ?? ''} usersMap={usersMap} />
+              <VoiceChannelPanel channelId={channelId} channelName={channel?.name} meId={user?.id ?? ''} usersMap={usersMap} />
             </div>
             {/* ── Drag handle to resize voice panel ── */}
             <div

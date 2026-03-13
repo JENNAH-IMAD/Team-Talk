@@ -53,4 +53,19 @@
   .border-subtle {
     @apply border-surface-200/80 dark:border-surface-800/80;
   }
+  @keyframes voice-pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(35, 165, 89, 0.55);
+    }
+    70% {
+      box-shadow: 0 0 0 4px rgba(35, 165, 89, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(35, 165, 89, 0);
+    }
+  }
+  .voice-speaking {
+    box-shadow: 0 0 0 2px #23a559;
+    animation: voice-pulse 1.6s infinite;
+  }
 }
