@@ -488,6 +488,11 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
   }, [participantIds, usersMap, meId, muted, screenOn, remoteVideos]);
 
   useEffect(() => {
+    const detail = { channelId, users: voiceUsers };
+    window.dispatchEvent(new CustomEvent('TeamTalk:voiceParticipants', { detail }));
+  }, [channelId, voiceUsers]);
+
+  useEffect(() => {
     if (layoutMode === 'screen' && !hasScreenShare) setLayoutMode('grid');
   }, [layoutMode, hasScreenShare]);
 
@@ -524,30 +529,21 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
 
       <div className="flex-1 min-h-0">
         {joined ? (
-          <div className="flex flex-col h-full min-h-0">
-            <div className="px-2 pt-2">
-              <VoiceChannelList
-                channel={{ id: channelId, name: channelName ?? 'Voice channel', users: voiceUsers }}
-              />
-            </div>
-            <div className="flex-1 min-h-0">
-              <VideoLayout
-                participants={layoutParticipants}
-                mode={layoutMode}
-                focusedId={focusedId}
-                onTileDoubleClick={handleTileDoubleClick}
-                onToggleMute={toggleMic}
-                onToggleSpeaker={() => setSpeakerOff(s => !s)}
-                onToggleCamera={toggleVideo}
-                onToggleScreen={toggleScreen}
-                onEndCall={leave}
-                muted={muted}
-                speakerOff={speakerOff}
-                cameraOn={videoOn}
-                screenOn={screenOn}
-              />
-            </div>
-          </div>
+          <VideoLayout
+            participants={layoutParticipants}
+            mode={layoutMode}
+            focusedId={focusedId}
+            onTileDoubleClick={handleTileDoubleClick}
+            onToggleMute={toggleMic}
+            onToggleSpeaker={() => setSpeakerOff(s => !s)}
+            onToggleCamera={toggleVideo}
+            onToggleScreen={toggleScreen}
+            onEndCall={leave}
+            muted={muted}
+            speakerOff={speakerOff}
+            cameraOn={videoOn}
+            screenOn={screenOn}
+          />
         ) : (
           <div className="px-4 pb-3">
             <button onClick={join} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold transition-colors">

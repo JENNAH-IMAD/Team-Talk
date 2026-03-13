@@ -35,25 +35,27 @@ const colorFor = (value: string) => {
   return `hsl(${hue} 70% 55%)`;
 };
 
-const VoiceChannelList: React.FC<{ channel: VoiceChannel }> = ({ channel }) => {
+const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; indent?: number }> = ({ channel, showHeader = true, indent = 8 }) => {
   const [expanded, setExpanded] = useState(true);
   const users = useMemo(() => channel.users ?? [], [channel.users]);
 
   return (
     <div className="text-gray-300">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-2 text-left text-[13px] font-semibold px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
-      >
-        <Volume2 size={14} className="text-gray-400" />
-        <span className="truncate">{channel.name}</span>
-        <span className="ml-auto text-gray-500">
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
-      </button>
+      {showHeader && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center gap-2 text-left text-[13px] font-semibold px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
+        >
+          <Volume2 size={14} className="text-gray-400" />
+          <span className="truncate">{channel.name}</span>
+          <span className="ml-auto text-gray-500">
+            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        </button>
+      )}
 
-      {expanded && (
-        <div className="mt-1 space-y-0.5 pl-2">
+      {(!showHeader || expanded) && (
+        <div className="mt-1 space-y-0.5" style={{ paddingLeft: indent }}>
           {users.map((u) => {
             const statusClass = STATUS_COLOR[(u.status ?? 'offline').toLowerCase()] ?? STATUS_COLOR.offline;
             return (

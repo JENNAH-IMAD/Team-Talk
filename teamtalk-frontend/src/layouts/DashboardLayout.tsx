@@ -12,7 +12,7 @@ import { fetchTeams, fetchTeamChannels, createChannel } from '@/store/slices/tea
 import { setActiveChannel } from '@/store/slices/chatSlice';
 import { fetchNotifications, markAllAsReadApi, markAsReadApi } from '@/store/slices/notificationSlice';
 import { Avatar, Badge, Button, Dropdown } from '@/components/ui';
-import { SidebarItem, NotificationItem } from '@/components/shared';
+import { SidebarItem, NotificationItem, VoiceChannelList } from '@/components/shared';
 import VoiceCallOverlay, { createRingtone } from '@/components/shared/VoiceCallOverlay';
 import apiClient from '@/services/apiClient';
 import { signalRService } from '@/services/signalRService';
@@ -85,6 +85,16 @@ const Sidebar: React.FC = () => {
   const [addingChannelTeam, setAddingChannelTeam] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showStatusPicker, setShowStatusPicker] = useState(false);
+  const [voiceUsersByChannel, setVoiceUsersByChannel] = useState<Record<string, Array<{
+    id: string;
+    username: string;
+    avatarUrl?: string | null;
+    isSpeaking?: boolean;
+    isMuted?: boolean;
+    isDeafened?: boolean;
+    isLive?: boolean;
+    status?: string;
+  }>>>({});
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
   });
@@ -101,6 +111,15 @@ const Sidebar: React.FC = () => {
   };
 
   useEffect(() => { dispatch(fetchTeams()); dispatch(fetchNotifications()); }, [dispatch]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ channelId: string; users: Array<any> }>).detail;
+      setVoiceUsersByChannel((prev) => ({ ...prev, [detail.channelId]: detail.users }));
+    };
+    window.addEventListener('TeamTalk:voiceParticipants', handler);
+    return () => window.removeEventListener('TeamTalk:voiceParticipants', handler);
+  }, []);
 
   useEffect(() => {
     teams.forEach((team) => {
@@ -247,18 +266,30 @@ const Sidebar: React.FC = () => {
                 </div>
                 {expandedTeams[team.id] && (
                   <>
-                    {teamChannels.map((ch) => {
-                      const isActive = activeChannel === ch.id && location.pathname.startsWith('/dashboard/chat');
-                      return (
-                        <button key={ch.id} onClick={() => handleChannelClick(ch.id)}
-                          className={cn(
-                            'w-full flex items-center gap-2 pl-8 pr-3 py-1.5 rounded-r-lg mr-2 text-[13px] transition-all duration-100',
-                            isActive ? 'bg-brand-500/10 text-brand-500 dark:text-brand-300 font-semibold'
-                              : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-800/60'
-                          )}>
-                          {ch.isVoice ? <Volume2 size={13} /> : ch.isPrivate ? <Lock size={13} /> : <Hash size={13} />}
-                          <span className="truncate">{ch.name}</span>
-                        </button>
+                  {teamChannels.map((ch) => {
+                    const isActive = activeChannel === ch.id && location.pathname.startsWith('/dashboard/chat');
+                    const voiceUsers = voiceUsersByChannel[ch.id] ?? [];
+                    return (
+                        <div key={ch.id}>
+                          <button onClick={() => handleChannelClick(ch.id)}
+                            className={cn(
+                              'w-full flex items-center gap-2 pl-8 pr-3 py-1.5 rounded-r-lg mr-2 text-[13px] transition-all duration-100',
+                              isActive ? 'bg-brand-500/10 text-brand-500 dark:text-brand-300 font-semibold'
+                                : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-800/60'
+                            )}>
+                            {ch.isVoice ? <Volume2 size={13} /> : ch.isPrivate ? <Lock size={13} /> : <Hash size={13} />}
+                            <span className="truncate">{ch.name}</span>
+                          </button>
+                          {ch.isVoice && voiceUsers.length > 0 && (
+                            <div className="pl-8 pr-3 py-1">
+                              <VoiceChannelList
+                                showHeader={false}
+                                indent={8}
+                                channel={{ id: ch.id, name: ch.name, users: voiceUsers }}
+                              />
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                     {addingChannelTeam === team.id && (
