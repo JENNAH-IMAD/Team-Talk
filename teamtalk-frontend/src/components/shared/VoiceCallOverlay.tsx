@@ -405,7 +405,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
   const handleResizeMoveX = useCallback((e: MouseEvent) => {
     if (!resizeXStateRef.current) return;
     const next = resizeXStateRef.current.startW + (resizeXStateRef.current.startX - e.clientX);
-    setPanelWidth(Math.max(360, Math.min(next, 900)));
+    setPanelWidth(Math.max(360, Math.min(next, 1400)));
   }, []);
   const handleResizeEnd = useCallback(() => {
     resizeStateRef.current = null;
@@ -552,7 +552,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
           exit={{ opacity: 0, y: 32 }}
           transition={{ type: 'spring', stiffness: 320, damping: 30 }}
           className="fixed top-20 right-5 z-50 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-          style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', width: panelWidth, height: panelHeight, maxWidth: 'calc(100vw - 40px)', maxHeight: 'calc(100vh - 140px)' }}
+          style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', width: panelWidth, height: panelHeight, maxWidth: 'calc(100vw - 20px)', maxHeight: 'calc(100vh - 140px)' }}
         >
           <VideoLayout
             participants={layoutParticipants}
