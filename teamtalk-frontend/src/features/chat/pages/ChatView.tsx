@@ -238,6 +238,21 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     setMuted(m => !m);
   }, [muted]);
 
+  const applySpeakerMute = useCallback((nextMuted: boolean) => {
+    document.querySelectorAll<HTMLAudioElement>('audio[id^="vcpa-"]').forEach((el) => {
+      el.muted = nextMuted;
+      if (!nextMuted) el.play().catch(() => {});
+    });
+  }, []);
+
+  const toggleSpeaker = useCallback(() => {
+    setSpeakerOff(prev => {
+      const next = !prev;
+      applySpeakerMute(next);
+      return next;
+    });
+  }, [applySpeakerMute]);
+
   const toggleVideo = useCallback(async () => {
     if (!videoOn) {
       try {
@@ -394,6 +409,10 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
   }, [leave]);
 
   useEffect(() => {
+    applySpeakerMute(speakerOff);
+  }, [speakerOff, applySpeakerMute]);
+
+  useEffect(() => {
     if (restoreAttemptedRef.current) return;
     restoreAttemptedRef.current = true;
     if (joinedRef.current || joined) return;
@@ -413,6 +432,12 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     }, 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('TeamTalk:voiceParticipants', { detail: { channelId, users: [] } }));
+    };
+  }, [channelId]);
 
   const layoutParticipants = useMemo<Participant[]>(() => {
     const map = new Map<string, Participant>();
@@ -535,7 +560,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
             focusedId={focusedId}
             onTileDoubleClick={handleTileDoubleClick}
             onToggleMute={toggleMic}
-            onToggleSpeaker={() => setSpeakerOff(s => !s)}
+            onToggleSpeaker={toggleSpeaker}
             onToggleCamera={toggleVideo}
             onToggleScreen={toggleScreen}
             onEndCall={leave}

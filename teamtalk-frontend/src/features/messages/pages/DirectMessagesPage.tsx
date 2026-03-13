@@ -200,6 +200,21 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
     setMuted(m => !m);
   }, [muted]);
 
+  const applySpeakerMute = useCallback((nextMuted: boolean) => {
+    document.querySelectorAll<HTMLAudioElement>('audio[id^="gva-"]').forEach((el) => {
+      el.muted = nextMuted;
+      if (!nextMuted) el.play().catch(() => {});
+    });
+  }, []);
+
+  const toggleSpeaker = useCallback(() => {
+    setSpeakerOff(prev => {
+      const next = !prev;
+      applySpeakerMute(next);
+      return next;
+    });
+  }, [applySpeakerMute]);
+
   const toggleVideo = useCallback(async () => {
     if (!videoOn) {
       try {
@@ -366,6 +381,10 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    applySpeakerMute(speakerOff);
+  }, [speakerOff, applySpeakerMute]);
+
   const layoutParticipants = useMemo<Participant[]>(() => {
     const map = new Map<string, Participant>();
     const ensure = (id: string, name: string, avatarUrl?: string, isMuted = false) => {
@@ -463,7 +482,7 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
             focusedId={focusedId}
             onTileDoubleClick={handleTileDoubleClick}
             onToggleMute={toggleMic}
-            onToggleSpeaker={() => setSpeakerOff(s => !s)}
+            onToggleSpeaker={toggleSpeaker}
             onToggleCamera={toggleVideo}
             onToggleScreen={toggleScreen}
             onEndCall={leave}
