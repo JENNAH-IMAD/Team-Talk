@@ -44,9 +44,9 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
       {showHeader && (
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-center gap-2 text-left text-[13px] font-semibold px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
+          className="w-full flex items-center gap-2 text-left text-[12px] font-semibold px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors text-gray-300"
         >
-          <Volume2 size={14} className="text-gray-400" />
+          <Volume2 size={13} className="text-gray-400" />
           <span className="truncate">{channel.name}</span>
           <span className="ml-auto text-gray-500">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -63,9 +63,9 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
                 key={u.id}
                 className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-white/5 transition-colors"
               >
-                <div className="relative w-10 h-10 flex-shrink-0">
+                <div className="relative w-7 h-7 flex-shrink-0">
                   <div
-                    className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold text-white ${u.isSpeaking ? 'voice-speaking' : ''}`}
+                    className={`w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-[11px] font-bold text-white ${u.isSpeaking ? 'voice-speaking' : ''}`}
                     style={{ backgroundColor: u.avatarUrl ? 'transparent' : colorFor(u.username) }}
                   >
                     {u.avatarUrl ? (
@@ -75,19 +75,19 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
                     )}
                   </div>
                   {u.isLive && (
-                    <div className="absolute -bottom-1 right-0 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded">
+                    <div className="absolute -bottom-1 right-0 bg-red-500 text-white text-[8px] font-bold px-1 py-0.5 rounded">
                       LIVE
                     </div>
                   )}
-                  <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-surface-900 ${statusClass}`} />
+                  <div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-2 border-surface-900 ${statusClass}`} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] truncate">{u.username}</div>
+                  <div className="text-[12px] truncate text-gray-200">{u.username}</div>
                 </div>
                 {u.isDeafened ? (
-                  <Headphones size={14} className="text-gray-500" />
+                  <Headphones size={12} className="text-gray-500" />
                 ) : u.isMuted ? (
-                  <MicOff size={14} className="text-gray-500" />
+                  <MicOff size={12} className="text-gray-500" />
                 ) : null}
               </div>
             );
