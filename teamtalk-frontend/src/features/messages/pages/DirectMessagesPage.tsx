@@ -1160,6 +1160,7 @@ const DirectMessagesPage: React.FC = () => {
   const [autoJoinGroupChannelId, setAutoJoinGroupChannelId] = useState<string | null>(null);
   const [pendingVoiceJoin, setPendingVoiceJoin] = useState<string | null>(null);
   const location = useLocation();
+  const restoreAttemptedRef = useRef(false);
 
   // Appel vocal 1-to-1 (outgoing only — incoming handled globally in DashboardLayout)
   const [callPeer, setCallPeer] = useState<User | null>(null);
@@ -1268,12 +1269,16 @@ const DirectMessagesPage: React.FC = () => {
   }, [groups, pendingVoiceJoin]);
 
   useEffect(() => {
+    if (restoreAttemptedRef.current) return;
     if (pendingVoiceJoin) return;
     try {
       const raw = localStorage.getItem(CALL_STORAGE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw) as { kind?: string; channelId?: string };
-      if (data.kind === 'group' && data.channelId) setPendingVoiceJoin(data.channelId);
+      if (data.kind === 'group' && data.channelId) {
+        restoreAttemptedRef.current = true;
+        setPendingVoiceJoin(data.channelId);
+      }
     } catch { /* ignore */ }
   }, [pendingVoiceJoin]);
 
