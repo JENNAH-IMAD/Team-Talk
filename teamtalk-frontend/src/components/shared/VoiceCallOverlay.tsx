@@ -536,7 +536,7 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
           exit={{ opacity: 0, y: 32 }}
           transition={{ type: 'spring', stiffness: 320, damping: 30 }}
           className="fixed top-20 right-5 z-50 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-          style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', width: panelWidth, height: panelHeight, maxWidth: 'calc(100vw - 40px)' }}
+          style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.1)', width: panelWidth, height: panelHeight, maxWidth: 'calc(100vw - 40px)', maxHeight: 'calc(100vh - 140px)' }}
         >
           <VideoLayout
             participants={layoutParticipants}
@@ -559,6 +559,11 @@ const VoiceCallOverlay: React.FC<VoiceCallOverlayProps> = ({
           >
             <div className="w-10 h-1.5 rounded-full bg-white/20" />
           </div>
+          <div
+            onMouseDown={startResize}
+            className="absolute top-2 -left-2 w-3 h-16 cursor-ew-resize"
+            style={{ touchAction: 'none' }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
