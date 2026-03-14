@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: teamtalk-postgres
+    environment:
+      POSTGRES_DB: teamtalk_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: bluekayn11/teamtalk-backend:latest
+    container_name: teamtalk-backend
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=teamtalk_platform;Username=postgres;Password=postgres
+      - Jwt__Key=TeamTalkSuperSecretKey2024MustBe32CharsLong!
+      - Jwt__Issuer=TeamTalk
+      - Jwt__Audience=TeamTalkUsers
+    ports:
+      - "5001:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/wwwroot/uploads
+
+  frontend:
+    image: bluekayn11/teamtalk-frontend:latest
+    container_name: teamtalk-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  uploads:
