@@ -124,7 +124,20 @@ const Sidebar: React.FC = () => {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ channelId: string; users: Array<any> }>).detail;
-      setVoiceUsersByChannel((prev) => ({ ...prev, [detail.channelId]: detail.users }));
+      setVoiceUsersByChannel((prev) => {
+        const next = { ...prev };
+        // Remove each user in the incoming list from every OTHER channel first,
+        // so a participant never appears in two channels simultaneously.
+        detail.users.forEach((u: { id: string }) => {
+          Object.keys(next).forEach((cid) => {
+            if (cid !== detail.channelId) {
+              next[cid] = next[cid].filter((existing) => existing.id !== u.id);
+            }
+          });
+        });
+        next[detail.channelId] = detail.users;
+        return next;
+      });
     };
     window.addEventListener('TeamTalk:voiceParticipants', handler);
     return () => window.removeEventListener('TeamTalk:voiceParticipants', handler);
@@ -240,6 +253,8 @@ const Sidebar: React.FC = () => {
   const handleVoiceChannelDoubleClick = (channelId: string) => {
     try { sessionStorage.setItem('teamtalk.autoJoinVoiceChannel', channelId); } catch { /* ignore */ }
     handleChannelClick(channelId);
+    // Also dispatch event in case user is already on that channel page (no remount)
+    window.dispatchEvent(new CustomEvent('TeamTalk:joinVoice', { detail: { channelId } }));
   };
 
   const handleLogout = () => { dispatch(logoutUser()); navigate('/login'); };
@@ -351,7 +366,10 @@ const Sidebar: React.FC = () => {
                   {teamChannels.map((ch) => {
                     const isActive = activeChannel === ch.id && location.pathname.startsWith('/dashboard/chat');
                     const allowedIds = new Set([team.ownerId, ...(team.members ?? [])]);
-                    const voiceUsers = (voiceUsersByChannel[ch.id] ?? []).filter((u) => allowedIds.has(u.id));
+                    // Only users actively in the voice call, filtered to this team's members
+                    const allVoiceListUsers = (voiceUsersByChannel[ch.id] ?? [])
+                      .filter((u) => allowedIds.has(u.id))
+                      .map(u => ({ ...u, isInVoice: true as const }));
                     return (
                         <div key={ch.id}>
                           <button
@@ -365,12 +383,12 @@ const Sidebar: React.FC = () => {
                             {ch.isVoice ? <Volume2 size={13} /> : ch.isPrivate ? <Lock size={13} /> : <Hash size={13} />}
                             <span className="truncate">{ch.name}</span>
                           </button>
-                          {ch.isVoice && voiceUsers.length > 0 && (
+                          {ch.isVoice && allVoiceListUsers.length > 0 && (
                             <div className="pl-8 pr-3 py-1">
                               <VoiceChannelList
                                 showHeader={false}
                                 indent={8}
-                                channel={{ id: ch.id, name: ch.name, users: voiceUsers }}
+                                channel={{ id: ch.id, name: ch.name, users: allVoiceListUsers }}
                               />
                             </div>
                           )}
@@ -623,12 +641,14 @@ export const DashboardLayout: React.FC = () => {
     return () => { signalRService.offEvent('IncomingCall', onIncoming as never); };
   }, []);
 
-  // Global voice join/leave — show overlay for group calls
+  // Global voice join/leave — show overlay for group/DM calls only (not regular voice channels)
   useEffect(() => {
     const onVoiceJoined = (e: Event) => {
       const { channelId, userId, groupName } = (e as CustomEvent<{
         channelId: string; userId: string; groupName?: string;
       }>).detail;
+      // Skip regular voice channel joins — only ring for group/DM calls
+      if (!groupName) return;
       // Skip own joins
       if (userId === me?.id) return;
       // Skip if already in this voice channel

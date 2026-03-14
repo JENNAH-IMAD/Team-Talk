@@ -29,6 +29,7 @@ public class UpdateTeamRequest
     public string? Description { get; set; }
     public string? Icon { get; set; }
     public string? Color { get; set; }
+    public Guid? OwnerId { get; set; }
 }
 
 public class AddTeamMemberRequest

@@ -245,6 +245,7 @@ public class TeamService : ITeamService
         if (request.Description != null) team.Description = request.Description;
         if (request.Icon != null) team.Icon = request.Icon;
         if (request.Color != null) team.Color = request.Color;
+        if (request.OwnerId.HasValue) team.OwnerId = request.OwnerId.Value;
         team.UpdatedAt = DateTime.UtcNow;
         await _uow.Teams.UpdateAsync(team);
         await _uow.SaveChangesAsync();
@@ -356,6 +357,21 @@ public class ChatService : IChatService
         };
 
         await _uow.Messages.AddAsync(message);
+
+        // Persist structured attachments
+        if (request.Attachments != null)
+        {
+            foreach (var att in request.Attachments)
+            {
+                message.Attachments.Add(new Attachment
+                {
+                    FileName = att.FileName,
+                    ContentType = att.ContentType,
+                    FilePath = att.FilePath,
+                    FileSize = att.FileSize,
+                });
+            }
+        }
 
         // Update channel last message time
         var channel = await _uow.Channels.GetByIdAsync(channelId);

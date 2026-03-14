@@ -48,6 +48,11 @@ public class SendMessageRequestValidator : AbstractValidator<SendMessageRequest>
 {
     public SendMessageRequestValidator()
     {
-        RuleFor(x => x.Content).NotEmpty().MaximumLength(4000);
+        RuleFor(x => x.Content)
+            .MaximumLength(4000)
+            .Must((request, content) =>
+                !string.IsNullOrWhiteSpace(content) ||
+                (request.Attachments != null && request.Attachments.Count > 0))
+            .WithMessage("Message content is required when no attachments are provided.");
     }
 }

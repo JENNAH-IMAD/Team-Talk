@@ -174,14 +174,27 @@ class SignalRService {
   }
 
   // ── Voice channel presence ────────────────────────────────
+  // Bug 2: call off before on — prevents duplicate listeners when component re-registers on reconnect
   onUserJoinedVoice(callback: (data: { channelId: string; userId: string }) => void): void {
+    this.connection?.off('UserJoinedVoice', callback as never);
     this.connection?.on('UserJoinedVoice', callback);
   }
   onUserLeftVoice(callback: (data: { channelId: string; userId: string }) => void): void {
+    this.connection?.off('UserLeftVoice', callback as never);
     this.connection?.on('UserLeftVoice', callback);
   }
   onVoiceParticipants(callback: (data: { channelId: string; userIds: string[] }) => void): void {
+    this.connection?.off('VoiceParticipants', callback as never);
     this.connection?.on('VoiceParticipants', callback);
+  }
+  // Bug 6: participant state sync — mute, camera, quality changes
+  async updateParticipantState(channelId: string, state: Record<string, unknown>): Promise<void> {
+    if (this.connection?.state === signalR.HubConnectionState.Connected)
+      await this.connection.invoke('UpdateParticipantState', channelId, state);
+  }
+  onParticipantStateChanged(callback: (data: { channelId: string; userId: string; state: Record<string, unknown> }) => void): void {
+    this.connection?.off('ParticipantStateChanged', callback as never);
+    this.connection?.on('ParticipantStateChanged', callback);
   }
 
   // ── Screen sharing (WebRTC signaling) ────────────────────
@@ -270,7 +283,7 @@ class SignalRService {
     if (!this.connection) return;
     [
       'IncomingCall', 'CallAccepted', 'CallRejected', 'CallEnded', 'IceCandidate',
-      'UserJoinedVoice', 'UserLeftVoice', 'VoiceParticipants',
+      'UserJoinedVoice', 'UserLeftVoice', 'VoiceParticipants', 'ParticipantStateChanged',
       'ScreenOfferReceived', 'ScreenShareAccepted', 'ScreenShareStopped', 'ScreenIceCandidate',
       'CallEventReceived',
       'GroupVoiceOffer', 'GroupVoiceAnswer', 'GroupVoiceIce',

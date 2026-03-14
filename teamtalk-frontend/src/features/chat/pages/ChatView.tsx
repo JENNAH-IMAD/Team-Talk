@@ -1,17 +1,18 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Send, Paperclip, AtSign, Smile, Hash, Lock, MessageSquare, X, Image, Mic, MicOff, Volume2, VolumeX, PhoneOff, Monitor, MonitorOff, Video, VideoOff } from 'lucide-react';
+import { Send, Paperclip, AtSign, Smile, Hash, Lock, MessageSquare, X, Mic, MicOff, Volume2, VolumeX, PhoneOff, Monitor, MonitorOff, Video, VideoOff } from 'lucide-react';
 import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
 import { useAppDispatch, useAppSelector, useAuth } from '@/hooks';
 import { signalRService, useSignalRVersion } from '@/services/signalRService';
 import { fetchMessages, sendMessage, setActiveChannel, editMessage, deleteMessage } from '@/store/slices/chatSlice';
-import { MessageBubble, GifPicker, VoiceChannelList } from '@/components/shared';
+import { setActiveSession, clearActiveSession } from '@/store/slices/activeVoiceSlice';
+import { MessageBubble, GifPicker, VoiceChannelList, FilePreviewCard } from '@/components/shared';
 import VideoLayout, { type Participant } from '@/components/shared/VideoLayout';
 import { Avatar, Loader } from '@/components/ui';
 import { cn } from '@/utils';
 import apiClient from '@/services/apiClient';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
-import type { User } from '@/types';
+import type { User, PendingAttachment } from '@/types';
 
 // Base URL for static assets (uploads). Strip /api suffix so images go to /uploads/...
 const API_BASE = (import.meta.env.VITE_API_URL as string || '/api').replace(/\/api$/, '');
@@ -106,6 +107,9 @@ const ICE_SERVERS = [
 
 const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meId: string; usersMap: Record<string, User> }> = ({ channelId, channelName, meId, usersMap }) => {
   const signalRVersion  = useSignalRVersion();
+  const dispatch        = useAppDispatch();
+  // Bug 1: derive connected state from Redux so UI updates instantly (before async getUserMedia/SignalR)
+  const isConnected     = useAppSelector((s) => s.activeVoice.id === channelId);
   const [joined, setJoined]         = useState(false);
   const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [muted, setMuted]           = useState(false);
@@ -230,6 +234,8 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
   }, [channelId]);
 
   const join = useCallback(async () => {
+    // Bug 1: dispatch synchronously BEFORE any async ops so the UI switches instantly
+    dispatch(setActiveSession({ type: 'channel', id: channelId }));
     // Leave all other active calls before joining
     window.dispatchEvent(new CustomEvent('Team Talk:leave-all-calls', { detail: { except: 'voice-channel' } }));
     try {
@@ -245,20 +251,29 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
       try {
         localStorage.setItem(CALL_STORAGE_KEY, JSON.stringify({ kind: 'channel', channelId, ts: Date.now() }));
       } catch { /* ignore */ }
-    } catch { /* mic denied */ }
-  }, [channelId, playCue]);
+    } catch {
+      // If getUserMedia fails, clear the optimistic Redux state we set synchronously
+      dispatch(clearActiveSession());
+    }
+  }, [channelId, playCue, dispatch]);
 
   const leave = useCallback(async () => {
+    // Bug 1: clear Redux session immediately so the Join button reappears right away
+    dispatch(clearActiveSession());
     pcsRef.current.forEach((_, pid) => closePc(pid));
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
-    screenStreamRef.current?.getTracks().forEach(t => t.stop());
+    // Null onended BEFORE stopping — prevents the stopScreen/stopCam callbacks from
+    // firing asynchronously after we leave and wiping out a freshly started new share
+    screenStreamRef.current?.getTracks().forEach(t => { t.onended = null; t.stop(); });
     screenStreamRef.current = null;
+    localCamRef.current?.getTracks().forEach(t => { t.onended = null; t.stop(); });
+    localCamRef.current = null;
     joinedRef.current = false;
     (window as unknown as { __TeamTalkVoiceChannels?: Set<string> }).__TeamTalkVoiceChannels?.delete(channelId);
     await signalRService.leaveVoiceChannel(channelId);
     setJoined(false); setParticipantIds([]); setVideoOn(false); setScreenOn(false);
-    setRemoteVideos([]); setLocalCamStream(null);
+    setRemoteVideos([]); setLocalCamStream(null); setLocalScreenStream(null);
     playCue('leave');
     try {
       const raw = localStorage.getItem(CALL_STORAGE_KEY);
@@ -267,13 +282,16 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
         if (data.kind === 'channel' && data.channelId === channelId) localStorage.removeItem(CALL_STORAGE_KEY);
       }
     } catch { /* ignore */ }
-  }, [channelId, closePc, playCue]);
+  }, [channelId, closePc, playCue, dispatch]);
 
   const toggleMic = useCallback(() => {
-    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = muted; });
-    setMuted(m => !m);
-    playCue(muted ? 'unmute' : 'mute');
-  }, [muted, playCue]);
+    const nextMuted = !muted;
+    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
+    setMuted(nextMuted);
+    playCue(nextMuted ? 'mute' : 'unmute');
+    // Bug 6: broadcast state change so other participants see mute icon update in real time
+    signalRService.updateParticipantState(channelId, { isMuted: nextMuted }).catch(() => {});
+  }, [muted, playCue, channelId]);
 
   const applySpeakerMute = useCallback((nextMuted: boolean) => {
     document.querySelectorAll<HTMLAudioElement>('audio[id^="vcpa-"]').forEach((el) => {
@@ -373,7 +391,8 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     const onParticipants = async (data: { channelId: string; userIds: string[] }) => {
       if (data.channelId !== channelId || !joinedRef.current) return;
       setParticipantIds(data.userIds);
-      for (const peerId of data.userIds.filter(id => id !== meIdRef.current)) {
+      // Only initiate to peers we don't already have a connection with — prevents re-offering on leave events
+      for (const peerId of data.userIds.filter(id => id !== meIdRef.current && !pcsRef.current.has(id))) {
         try {
           const pc = createPc(peerId);
           addTracks(pc);
@@ -408,12 +427,21 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
         if (pc) await pc.addIceCandidate(JSON.parse(data.candidate));
       } catch { /* ignore */ }
     };
+    // Bug 6: handle mute/camera state changes from other participants
+    const onStateChanged = (data: { channelId: string; userId: string; state: Record<string, unknown> }) => {
+      if (data.channelId !== channelId) return;
+      // Update participant mute state so local UI reflects remote state immediately
+      // (participantIds is IDs only — mute state is derived in layoutParticipants via remoteVideos)
+      // For now just trigger a re-render by touching participantIds (no-op if already present)
+      setParticipantIds(prev => prev.includes(data.userId) ? [...prev] : prev);
+    };
     signalRService.onUserJoinedVoice(onJoined);
     signalRService.onUserLeftVoice(onLeft);
     signalRService.onVoiceParticipants(onParticipants);
     signalRService.onGroupVoiceOffer(onOffer);
     signalRService.onGroupVoiceAnswer(onAnswer);
     signalRService.onGroupVoiceIce(onIce);
+    signalRService.onParticipantStateChanged(onStateChanged);
     return () => {
       signalRService.offEvent('UserJoinedVoice', onJoined as never);
       signalRService.offEvent('UserLeftVoice', onLeft as never);
@@ -421,6 +449,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
       signalRService.offEvent('GroupVoiceOffer', onOffer as never);
       signalRService.offEvent('GroupVoiceAnswer', onAnswer as never);
       signalRService.offEvent('GroupVoiceIce', onIce as never);
+      signalRService.offEvent('ParticipantStateChanged', onStateChanged as never);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId, signalRVersion, createPc, addTracks, closePc]);
@@ -475,6 +504,17 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
         join();
       }
     } catch { /* ignore */ }
+  }, [channelId, join, joined]);
+
+  // Listen for double-click auto-join event (fired when user is already on this channel page)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { channelId: targetId } = (e as CustomEvent<{ channelId: string }>).detail;
+      if (targetId !== channelId || joinedRef.current || joined) return;
+      join();
+    };
+    window.addEventListener('TeamTalk:joinVoice', handler);
+    return () => window.removeEventListener('TeamTalk:joinVoice', handler);
   }, [channelId, join, joined]);
 
   useEffect(() => {
@@ -532,6 +572,7 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     const meUser = usersMap[meId];
     const meName = meUser?.name ?? 'Vous';
     const me = ensure('local', meName, meUser?.avatarUrl, muted);
+    me.isMe = true;
     if (videoOn && localCamStream) me.streams.push({ type: 'camera', stream: localCamStream });
     if (screenOn && localScreenStream) {
       me.streams.push({ type: 'screen', stream: localScreenStream, screenIndex: 1 });
@@ -579,9 +620,11 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
     window.dispatchEvent(new CustomEvent('TeamTalk:voiceParticipants', { detail }));
   }, [channelId, voiceUsers]);
 
+  // Restore to grid when screen share ends (e.g. if user was in speaker mode due to a share)
   useEffect(() => {
-    if (layoutMode === 'screen' && !hasScreenShare) setLayoutMode('grid');
-  }, [layoutMode, hasScreenShare]);
+    if (!hasScreenShare && layoutMode === 'speaker') setLayoutMode('grid');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasScreenShare]);
 
   useEffect(() => {
     if (!focusedId) return;
@@ -615,7 +658,8 @@ const VoiceChannelPanel: React.FC<{ channelId: string; channelName?: string; meI
       </div>
 
       <div className="flex-1 min-h-0">
-        {joined ? (
+        {/* Bug 1: isConnected (Redux) switches instantly on click; joined tracks WebRTC readiness */}
+        {(isConnected || joined) ? (
           <VideoLayout
             participants={layoutParticipants}
             mode={layoutMode}
@@ -698,7 +742,7 @@ const ChatView: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // File upload
-  const [attachments, setAttachments] = useState<{ url: string; name: string; type: string }[]>([]);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -833,34 +877,43 @@ const ChatView: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
     try {
       const form = new FormData();
       form.append('file', file);
-      const { data } = await apiClient.post<{ url: string; fileName: string; contentType: string }>(
+      const { data } = await apiClient.post<{ url: string; fileName: string; contentType: string; size: number; filePath: string }>(
         '/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-      setAttachments((prev) => [...prev, { url: data.url, name: data.fileName, type: data.contentType }]);
+      setAttachments((prev) => [...prev, {
+        filePath: data.filePath,
+        fileName: data.fileName,
+        contentType: data.contentType,
+        fileSize: data.size,
+        previewUrl,
+      }]);
     } catch {
-      // ignore
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const removeAttachment = (idx: number) => setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => {
+      const att = prev[idx];
+      if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
 
   // ── Send ─────────────────────────────────────────────────
   const handleSend = () => {
     if ((!messageText.trim() && attachments.length === 0) || !channelId || recording) return;
-    let content = messageText.trim();
-    for (const att of attachments) {
-      content += att.type.startsWith('image/')
-        ? `\n![${att.name}](${API_BASE}${att.url})`
-        : `\n[📎 ${att.name}](${API_BASE}${att.url})`;
-    }
-    dispatch(sendMessage({ channelId, content }));
+    const content = messageText.trim();
+    dispatch(sendMessage({ channelId, content, attachments: attachments.length > 0 ? attachments : undefined }));
     setMessageText('');
+    attachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
     setAttachments([]);
     setShowTyping(true);
     setTimeout(() => setShowTyping(false), 2500);
@@ -892,7 +945,7 @@ const ChatView: React.FC = () => {
         {channel.isVoice && channelId && (
           <>
             <div style={{ height: voiceHeight, flexShrink: 0, overflow: 'hidden' }}>
-              <VoiceChannelPanel channelId={channelId} channelName={channel?.name} meId={user?.id ?? ''} usersMap={usersMap} />
+              <VoiceChannelPanel key={channelId} channelId={channelId} channelName={channel?.name} meId={user?.id ?? ''} usersMap={usersMap} />
             </div>
             {/* ── Drag handle to resize voice panel ── */}
             <div
@@ -965,26 +1018,7 @@ const ChatView: React.FC = () => {
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {attachments.map((att, i) => (
-                  <div key={i} className="relative group">
-                    {att.type.startsWith('image/') ? (
-                      <img
-                        src={`${API_BASE}${att.url}`}
-                        alt={att.name}
-                        className="h-16 w-16 object-cover rounded-lg border border-subtle"
-                      />
-                    ) : (
-                      <div className="h-12 px-3 flex items-center gap-2 bg-surface-100 dark:bg-surface-800 rounded-lg border border-subtle">
-                        <Image size={14} className="text-brand-500 flex-shrink-0" />
-                        <span className="text-xs text-gray-600 dark:text-gray-400 max-w-[80px] truncate">{att.name}</span>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => removeAttachment(i)}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X size={10} />
-                    </button>
-                  </div>
+                  <FilePreviewCard key={i} file={att} onRemove={() => removeAttachment(i)} />
                 ))}
               </div>
             )}
@@ -1013,7 +1047,7 @@ const ChatView: React.FC = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,video/mp4,application/pdf,audio/*"
+                accept="image/*,video/*,application/pdf,application/zip,.zip,.docx,.xlsx,.pptx,audio/*"
                 className="hidden"
                 onChange={handleFileSelect}
               />

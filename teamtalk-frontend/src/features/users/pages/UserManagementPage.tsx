@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, X, UserX, Shield, ChevronDown, Check, AlertTriangle,
@@ -11,6 +11,269 @@ import { storage, getUserRoles, getPrimaryRole, normalizeRoles, hasRole } from '
 import { setUser } from '@/store/slices/authSlice';
 import toast from 'react-hot-toast';
 import type { User, UserRole, UserStatus } from '@/types';
+
+// ── Job Titles ────────────────────────────────────────────
+const JOB_TITLES: { category: string; titles: string[] }[] = [
+  {
+    category: 'LEADERSHIP & EXECUTIVE',
+    titles: [
+      'Chief Executive Officer', 'Chief Technology Officer', 'Chief Operating Officer',
+      'Chief Financial Officer', 'Chief Marketing Officer', 'Chief People Officer',
+      'Chief Product Officer', 'Chief Information Officer', 'Vice President of Engineering',
+      'Vice President of Sales', 'Vice President of Marketing', 'General Manager',
+      'Director of Operations',
+    ],
+  },
+  {
+    category: 'INFORMATION TECHNOLOGY',
+    titles: [
+      'Software Engineer', 'Senior Software Engineer', 'Lead Software Engineer',
+      'Principal Engineer', 'Staff Engineer', 'Frontend Developer', 'Backend Developer',
+      'Full Stack Developer', 'Mobile Developer', 'DevOps Engineer', 'Site Reliability Engineer',
+      'Cloud Architect', 'Solutions Architect', 'Enterprise Architect', 'Data Engineer',
+      'Data Scientist', 'Machine Learning Engineer', 'AI Engineer', 'QA Engineer',
+      'Security Engineer', 'Cybersecurity Analyst', 'Network Engineer', 'Systems Administrator',
+      'IT Support Specialist', 'Database Administrator', 'Technical Lead',
+      'Engineering Manager', 'Head of Engineering',
+    ],
+  },
+  {
+    category: 'PRODUCT',
+    titles: [
+      'Product Manager', 'Senior Product Manager', 'Principal Product Manager',
+      'Director of Product', 'Head of Product', 'Product Owner', 'Business Analyst',
+      'Product Analyst', 'UX Designer', 'UI Designer', 'Product Designer', 'UX Researcher',
+      'Design Lead', 'Head of Design',
+    ],
+  },
+  {
+    category: 'MARKETING',
+    titles: [
+      'Marketing Manager', 'Senior Marketing Manager', 'Director of Marketing',
+      'Head of Marketing', 'Content Strategist', 'Content Writer', 'Copywriter',
+      'SEO Specialist', 'SEM Specialist', 'Social Media Manager', 'Community Manager',
+      'Brand Manager', 'Growth Hacker', 'Performance Marketing Manager',
+      'Email Marketing Specialist', 'Marketing Analyst', 'Campaign Manager',
+      'Events Manager', 'PR Manager', 'Communications Manager',
+    ],
+  },
+  {
+    category: 'SALES',
+    titles: [
+      'Sales Representative', 'Account Executive', 'Senior Account Executive',
+      'Sales Manager', 'Director of Sales', 'Head of Sales', 'Business Development Manager',
+      'Business Development Representative', 'Sales Engineer', 'Pre-Sales Consultant',
+      'Account Manager', 'Customer Success Manager', 'Customer Success Lead',
+      'Partnership Manager', 'Channel Sales Manager',
+    ],
+  },
+  {
+    category: 'HUMAN RESOURCES',
+    titles: [
+      'HR Manager', 'Senior HR Manager', 'Director of HR', 'Head of HR',
+      'HR Business Partner', 'Recruiter', 'Senior Recruiter', 'Talent Acquisition Manager',
+      'Talent Acquisition Specialist', 'People Operations Manager',
+      'Compensation & Benefits Manager', 'Learning & Development Manager',
+      'HR Generalist', 'HR Coordinator', 'Onboarding Specialist',
+      'Employee Relations Manager', 'Workforce Planning Analyst',
+    ],
+  },
+  {
+    category: 'FINANCE & ACCOUNTING',
+    titles: [
+      'Finance Manager', 'Senior Finance Manager', 'Director of Finance', 'Head of Finance',
+      'CFO', 'Financial Analyst', 'Senior Financial Analyst', 'FP&A Manager', 'Controller',
+      'Accounting Manager', 'Senior Accountant', 'Accountant', 'Accounts Payable Specialist',
+      'Accounts Receivable Specialist', 'Payroll Manager', 'Payroll Specialist',
+      'Tax Manager', 'Audit Manager', 'Treasury Manager', 'Risk Manager',
+    ],
+  },
+  {
+    category: 'LEGAL & COMPLIANCE',
+    titles: [
+      'General Counsel', 'Legal Counsel', 'Corporate Attorney', 'Compliance Manager',
+      'Compliance Officer', 'Data Privacy Officer', 'Risk & Compliance Analyst',
+      'Paralegal', 'Legal Operations Manager', 'Contract Manager',
+    ],
+  },
+  {
+    category: 'OPERATIONS',
+    titles: [
+      'Operations Manager', 'Senior Operations Manager', 'Director of Operations',
+      'Head of Operations', 'Project Manager', 'Senior Project Manager', 'Program Manager',
+      'Scrum Master', 'Agile Coach', 'Business Operations Analyst',
+      'Process Improvement Manager', 'Supply Chain Manager', 'Logistics Manager',
+      'Facilities Manager', 'Office Manager', 'Executive Assistant', 'Administrative Assistant',
+    ],
+  },
+  {
+    category: 'CUSTOMER SUPPORT',
+    titles: [
+      'Customer Support Manager', 'Head of Customer Support', 'Customer Support Lead',
+      'Customer Support Specialist', 'Technical Support Engineer', 'Help Desk Analyst',
+      'Customer Experience Manager', 'Customer Onboarding Specialist',
+    ],
+  },
+  {
+    category: 'DATA & ANALYTICS',
+    titles: [
+      'Data Analyst', 'Senior Data Analyst', 'Analytics Manager', 'Director of Analytics',
+      'Head of Data', 'Business Intelligence Analyst', 'BI Developer', 'Data Architect',
+      'Analytics Engineer', 'Reporting Analyst', 'Insights Manager',
+    ],
+  },
+];
+
+// ── JobTitleDropdown ──────────────────────────────────────
+const JobTitleDropdown: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setSearch('');
+      setHighlighted(null);
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!highlighted || !listRef.current) return;
+    const el = listRef.current.querySelector(`[data-title="${CSS.escape(highlighted)}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [highlighted]);
+
+  const q = search.toLowerCase().trim();
+  const filtered = JOB_TITLES
+    .map(cat => ({ category: cat.category, titles: q ? cat.titles.filter(t => t.toLowerCase().includes(q)) : cat.titles }))
+    .filter(cat => cat.titles.length > 0);
+  const flatTitles = filtered.flatMap(cat => cat.titles);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!open) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { setOpen(true); e.preventDefault(); }
+      return;
+    }
+    if (e.key === 'Escape') { setOpen(false); e.preventDefault(); return; }
+    if (e.key === 'Enter' && highlighted) { onChange(highlighted); setOpen(false); e.preventDefault(); return; }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const idx = highlighted ? flatTitles.indexOf(highlighted) : -1;
+      setHighlighted(flatTitles[Math.min(idx + 1, flatTitles.length - 1)] ?? null);
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const idx = highlighted ? flatTitles.indexOf(highlighted) : flatTitles.length;
+      setHighlighted(flatTitles[Math.max(idx - 1, 0)] ?? null);
+    }
+  };
+
+  return (
+    <div className="mb-0 relative" ref={containerRef} onKeyDown={handleKeyDown} tabIndex={-1}>
+      <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+        Job title <span className="normal-case font-normal">(optional)</span>
+      </label>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-colors text-left focus:outline-none ${
+          open
+            ? 'border-brand-500 ring-2 ring-brand-500/20'
+            : 'border-gray-200 dark:border-surface-700 hover:border-gray-300 dark:hover:border-surface-600'
+        } bg-white dark:bg-surface-800`}
+        style={{ minHeight: 38 }}
+      >
+        <span className={value ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}>
+          {value || 'e.g. Software Engineer'}
+        </span>
+        <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
+          {value && (
+            <span
+              role="button"
+              tabIndex={-1}
+              onClick={e => { e.stopPropagation(); onChange(''); }}
+              className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-400 cursor-pointer"
+            >
+              <X size={12} />
+            </span>
+          )}
+          <ChevronDown size={14} className={`text-gray-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-surface-800 border border-gray-200 dark:border-surface-700 rounded-xl shadow-2xl overflow-hidden">
+          {/* Search bar */}
+          <div className="p-2 border-b border-gray-100 dark:border-surface-700">
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={e => { setSearch(e.target.value); setHighlighted(null); }}
+                placeholder="Search job titles..."
+                className="w-full pl-7 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-surface-700 border border-gray-200 dark:border-surface-600 rounded-lg outline-none focus:border-brand-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                onKeyDown={e => {
+                  // Let arrow/enter/escape bubble to container handler
+                  if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
+                    e.preventDefault();
+                    containerRef.current?.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true }));
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Scrollable list */}
+          <div ref={listRef} className="overflow-y-auto" style={{ maxHeight: 280 }}>
+            {filtered.length === 0 && (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">No matches found</div>
+            )}
+            {filtered.map((cat, ci) => (
+              <div key={cat.category}>
+                <div className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-surface-900/60 select-none ${ci > 0 ? 'border-t border-gray-100 dark:border-surface-700' : ''}`}>
+                  {cat.category}
+                </div>
+                {cat.titles.map(title => (
+                  <button
+                    key={title}
+                    data-title={title}
+                    type="button"
+                    onMouseEnter={() => setHighlighted(title)}
+                    onClick={() => { onChange(title); setOpen(false); }}
+                    className={`w-full flex flex-col items-start px-3 py-2 text-left transition-colors ${
+                      highlighted === title
+                        ? 'bg-brand-50 dark:bg-brand-500/10'
+                        : value === title
+                        ? 'bg-brand-50/60 dark:bg-brand-500/5'
+                        : 'hover:bg-gray-50 dark:hover:bg-surface-700/60'
+                    }`}
+                  >
+                    <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100 leading-snug">{title}</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight">{cat.category}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── Constants ─────────────────────────────────────────────
 const ROLES: { value: UserRole; label: string; color: string; desc: string }[] = [
@@ -275,7 +538,7 @@ const InviteModal: React.FC<InviteModalProps> = ({ onClose, onInvited }) => {
           {field('lastName', 'Last name', 'Your last name', 'text', 'off')}
         </div>
         {field('email', 'Email', 'you@company.com', 'email', 'off')}
-        {field('title', 'Job title (optional)', 'e.g. Software Engineer', 'text', 'off')}
+        <JobTitleDropdown value={form.title} onChange={v => { setForm(p => ({ ...p, title: v })); }} />
         {field('password', 'Temporary password', '••••••••', 'password', 'new-password')}
 
         {/* Role multi-select */}

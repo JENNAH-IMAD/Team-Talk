@@ -1,9 +1,71 @@
 import React, { useState, useEffect } from 'react';
-import { Edit2, Trash2, Smile, Reply, Bookmark, Check, X } from 'lucide-react';
+import { Edit2, Trash2, Smile, Reply, Bookmark, Check, X, FileText, FileArchive, FileSpreadsheet, File, Film, Download } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { formatTime, cn } from '@/utils';
 import apiClient from '@/services/apiClient';
-import type { Message, User } from '@/types';
+import type { Message, User, Attachment } from '@/types';
+
+const API_BASE = (import.meta.env.VITE_API_URL as string || '/api').replace(/\/api$/, '');
+
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AttachmentCard({ att }: { att: Attachment }) {
+  const url = att.url.startsWith('http') ? att.url : `${API_BASE}${att.url}`;
+  const mime = att.contentType ?? '';
+  const isImage = mime.startsWith('image/');
+  const isVideo = mime.startsWith('video/');
+  const isPdf = mime === 'application/pdf' || att.fileName.endsWith('.pdf');
+  const isZip = mime.includes('zip') || /\.(zip|rar|7z|tar|gz)$/i.test(att.fileName);
+  const isSheet = mime.includes('spreadsheet') || mime.includes('excel') || /\.(xlsx|xls|csv)$/i.test(att.fileName);
+
+  if (isImage) {
+    return (
+      <img
+        src={url}
+        alt={att.fileName}
+        className="max-w-xs max-h-64 rounded-xl border border-subtle object-cover cursor-pointer hover:opacity-90 transition-opacity"
+        onClick={() => window.open(url, '_blank')}
+      />
+    );
+  }
+
+  if (isVideo) {
+    return (
+      <video
+        src={url}
+        controls
+        className="max-w-xs rounded-xl border border-subtle"
+      />
+    );
+  }
+
+  let icon = <File size={18} className="text-brand-500 flex-shrink-0" />;
+  if (isPdf) icon = <FileText size={18} className="text-red-500 flex-shrink-0" />;
+  else if (isZip) icon = <FileArchive size={18} className="text-amber-500 flex-shrink-0" />;
+  else if (isSheet) icon = <FileSpreadsheet size={18} className="text-emerald-500 flex-shrink-0" />;
+  else if (isVideo) icon = <Film size={18} className="text-purple-500 flex-shrink-0" />;
+
+  return (
+    <a
+      href={url}
+      download={att.fileName}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-2.5 px-3 py-2 bg-surface-100 dark:bg-surface-800 border border-subtle rounded-xl hover:border-brand-500/40 transition-colors max-w-xs group"
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{att.fileName}</p>
+        {att.fileSize > 0 && <p className="text-[10px] text-gray-400">{fmtBytes(att.fileSize)}</p>}
+      </div>
+      <Download size={13} className="text-gray-400 group-hover:text-brand-500 transition-colors flex-shrink-0" />
+    </a>
+  );
+}
 
 // Quick emoji picker (no heavy library needed for 6 common emojis)
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
@@ -84,13 +146,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         });
       }
       if (match[1] !== undefined) {
-        const imgSrc = fixUrl(match[2]);
-        elements.push(
-          <img key={key++} src={imgSrc} alt={match[1]}
-            className="max-w-xs max-h-64 rounded-xl mt-1.5 border border-subtle object-cover cursor-pointer hover:opacity-90 transition-opacity"
-            onClick={() => window.open(imgSrc, '_blank')}
-          />
-        );
+        const mediaSrc = fixUrl(match[2]);
+        const isClip = /\.mp4(\?|$)/i.test(mediaSrc);
+        if (isClip) {
+          elements.push(
+            <video key={key++} src={mediaSrc} autoPlay loop muted playsInline
+              className="max-w-xs rounded-xl mt-1.5 border border-subtle"
+            />
+          );
+        } else {
+          elements.push(
+            <img key={key++} src={mediaSrc} alt={match[1]}
+              className="max-w-xs max-h-64 rounded-xl mt-1.5 border border-subtle object-cover cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => window.open(mediaSrc, '_blank')}
+            />
+          );
+        }
       } else if (match[3] !== undefined) {
         const linkHref = fixUrl(match[4]);
         elements.push(
@@ -162,9 +233,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </button>
           </div>
         ) : (
-          <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
-            {renderContent(message.content)}
-          </div>
+          <>
+            {message.content && (
+              <div className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
+                {renderContent(message.content)}
+              </div>
+            )}
+            {(message.attachments ?? []).length > 0 && (
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {message.attachments!.map(att => (
+                  <AttachmentCard key={att.id} att={att} />
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Reactions */}

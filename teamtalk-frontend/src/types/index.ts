@@ -68,10 +68,18 @@ export interface Reaction {
 
 export interface Attachment {
   id: string;
-  name: string;
-  type: 'image' | 'file' | 'video';
+  fileName: string;
+  contentType: string;
   url: string;
-  size: number;
+  fileSize: number;
+}
+
+export interface PendingAttachment {
+  filePath: string;   // uuid.ext — the saved server filename
+  fileName: string;   // original display name
+  contentType: string;
+  fileSize: number;
+  previewUrl?: string; // object URL for local image preview
 }
 
 export interface Notification {

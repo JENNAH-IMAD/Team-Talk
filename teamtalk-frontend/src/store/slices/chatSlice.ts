@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import apiClient from '@/services/apiClient';
-import type { Message, ChatState } from '@/types';
+import type { Message, ChatState, PendingAttachment } from '@/types';
 
 // ── Thunks ───────────────────────────────────────────────────
 export const fetchMessages = createAsyncThunk(
@@ -13,8 +13,22 @@ export const fetchMessages = createAsyncThunk(
 
 export const sendMessage = createAsyncThunk(
   'chat/sendMessage',
-  async ({ channelId, content, parentId }: { channelId: string; content: string; parentId?: string }) => {
-    const { data } = await apiClient.post(`/channels/${channelId}/messages`, { content, parentId });
+  async ({ channelId, content, parentId, attachments }: {
+    channelId: string;
+    content: string;
+    parentId?: string;
+    attachments?: PendingAttachment[];
+  }) => {
+    const payload: Record<string, unknown> = { content, parentId };
+    if (attachments && attachments.length > 0) {
+      payload.attachments = attachments.map(a => ({
+        filePath: a.filePath,
+        fileName: a.fileName,
+        contentType: a.contentType,
+        fileSize: a.fileSize,
+      }));
+    }
+    const { data } = await apiClient.post(`/channels/${channelId}/messages`, payload);
     return data as Message;
   }
 );

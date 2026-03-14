@@ -16,26 +16,61 @@ public class UserIdProvider : IUserIdProvider
 public class ChatHub : Hub
 {
     private readonly IChatService _chatService;
-    // In-memory voice channel presence: channelId -> set of userIds (using ConcurrentDictionary as a set)
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, byte>> _voicePresence = new();
+
+    // In-memory voice channel presence: channelId -> set of userIds
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        string, System.Collections.Concurrent.ConcurrentDictionary<string, byte>> _voicePresence = new();
+
+    // Bug 3: debounce disconnect — cancel if user reconnects within 3 seconds
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        string, CancellationTokenSource> _disconnectTimers = new();
 
     public ChatHub(IChatService chatService) { _chatService = chatService; }
 
     private Guid GetUserId() => Guid.Parse(Context.User!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
 
-    public override Task OnConnectedAsync() => base.OnConnectedAsync();
+    public override async Task OnConnectedAsync()
+    {
+        await base.OnConnectedAsync();
+        // Send current voice presence snapshot to the newly connected client
+        foreach (var (cid, set) in _voicePresence)
+        {
+            await Clients.Caller.SendAsync("VoiceParticipants", new { ChannelId = cid, UserIds = set.Keys.ToList() });
+        }
+    }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var userId = GetUserId().ToString();
-        // Remove from all voice channels on disconnect
-        foreach (var (channelId, set) in _voicePresence)
+
+        // Bug 3: cancel any existing timer for this user (handles rapid reconnects)
+        if (_disconnectTimers.TryRemove(userId, out var oldCts))
+            oldCts.Cancel();
+
+        // Bug 3: defer the leave broadcast — only fires if user does NOT reconnect within 3 s
+        var cts = new CancellationTokenSource();
+        _disconnectTimers[userId] = cts;
+        var token = cts.Token;
+
+        _ = Task.Run(async () =>
         {
-            if (set.TryRemove(userId, out _))
+            try
             {
-                await Clients.Group(channelId).SendAsync("UserLeftVoice", new { ChannelId = channelId, UserId = userId });
+                await Task.Delay(3000, token);
+                _disconnectTimers.TryRemove(userId, out _);
+                foreach (var (cid, s) in _voicePresence)
+                {
+                    if (s.TryRemove(userId, out _))
+                    {
+                        // Bug 6: broadcast to all so every connected client sees the leave
+                        await Clients.All.SendAsync("UserLeftVoice", new { ChannelId = cid, UserId = userId });
+                        await Clients.All.SendAsync("VoiceParticipants", new { ChannelId = cid, UserIds = s.Keys.ToList() });
+                    }
+                }
             }
-        }
+            catch (OperationCanceledException) { /* user reconnected within 3 s — skip leave */ }
+        });
+
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -61,21 +96,66 @@ public class ChatHub : Hub
     public async Task JoinVoiceChannel(string channelId)
     {
         var userId = GetUserId().ToString();
+
+        // Bug 3: cancel any pending disconnect timer so the leave event is suppressed
+        if (_disconnectTimers.TryRemove(userId, out var cts))
+            cts.Cancel();
+
+        // Bug 2: remove user from ALL other voice channels first (one channel at a time)
+        foreach (var (cid, s) in _voicePresence)
+        {
+            if (cid != channelId && s.TryRemove(userId, out _))
+            {
+                // Bug 6: broadcast to all so every client sees the cross-channel leave
+                await Clients.All.SendAsync("UserLeftVoice", new { ChannelId = cid, UserId = userId });
+            }
+        }
+
         var set = _voicePresence.GetOrAdd(channelId, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, byte>());
-        set.TryAdd(userId, 0);
+
+        // Bug 2: only broadcast join if the user wasn't already in this channel (avoids duplicate join events on reconnect)
+        bool isNew = set.TryAdd(userId, 0);
+
         await Groups.AddToGroupAsync(Context.ConnectionId, $"voice_{channelId}");
-        // Broadcast to text channel group so all members (including non-voice) receive the event
-        await Clients.Group(channelId).SendAsync("UserJoinedVoice", new { ChannelId = channelId, UserId = userId });
-        // Send current participants list to the newcomer
+
+        if (isNew)
+        {
+            // Bug 6: broadcast to ALL connected clients, not just the channel group —
+            // users viewing other channels need to see voice presence updates in the sidebar
+            await Clients.All.SendAsync("UserJoinedVoice", new { ChannelId = channelId, UserId = userId });
+        }
+
+        // Send the participant list only to the new joiner — they initiate WebRTC to existing peers.
+        // Existing users learn about the join via UserJoinedVoice and respond to incoming offers.
+        // Sending to All caused offer collisions: both sides sent offers simultaneously → connections failed.
         await Clients.Caller.SendAsync("VoiceParticipants", new { ChannelId = channelId, UserIds = set.Keys.ToList() });
     }
 
     public async Task LeaveVoiceChannel(string channelId)
     {
         var userId = GetUserId().ToString();
-        if (_voicePresence.TryGetValue(channelId, out var set)) set.TryRemove(userId, out _);
+        var wasPresent = _voicePresence.TryGetValue(channelId, out var set) && set.TryRemove(userId, out _);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"voice_{channelId}");
-        await Clients.Group(channelId).SendAsync("UserLeftVoice", new { ChannelId = channelId, UserId = userId });
+        // Only broadcast if the user was actually in the channel — prevents duplicate leave events
+        // when LeaveVoiceChannel is called more than once (navigation, React StrictMode, etc.)
+        if (wasPresent)
+            await Clients.All.SendAsync("UserLeftVoice", new { ChannelId = channelId, UserId = userId });
+
+        // Broadcast updated participants list so all clients re-sync
+        if (_voicePresence.TryGetValue(channelId, out var updatedSet))
+            await Clients.All.SendAsync("VoiceParticipants", new { ChannelId = channelId, UserIds = updatedSet.Keys.ToList() });
+    }
+
+    // Bug 6: state sync — mute, camera, quality changes are broadcast to all in channel
+    public async Task UpdateParticipantState(string channelId, object stateUpdate)
+    {
+        var userId = GetUserId().ToString();
+        await Clients.All.SendAsync("ParticipantStateChanged", new
+        {
+            ChannelId = channelId,
+            UserId = userId,
+            State = stateUpdate,
+        });
     }
 
     // ── 1-to-1 Voice Calls (WebRTC Signaling) ────────
@@ -123,7 +203,6 @@ public class ChatHub : Hub
         => await Clients.User(targetUserId).SendAsync("ScreenIceCandidate", new { Candidate = candidate });
 
     // ── Call Event Notifications (broadcast to channel) ───
-    // Used to show in-chat notifications: call started, ended, joined, etc.
     public async Task SendCallEvent(string channelId, string type, string text)
         => await Clients.Group(channelId).SendAsync("CallEventReceived", new { ChannelId = channelId, Type = type, Text = text });
 

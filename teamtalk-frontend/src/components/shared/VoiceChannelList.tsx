@@ -9,6 +9,7 @@ export type VoiceChannelUser = {
   isMuted?: boolean;
   isDeafened?: boolean;
   isLive?: boolean;
+  isInVoice?: boolean;   // true = actively in call, false/undefined = not in call (shown dimmed)
   status?: 'online' | 'idle' | 'dnd' | 'offline' | string;
 };
 
@@ -39,6 +40,10 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
   const [expanded, setExpanded] = useState(true);
   const users = useMemo(() => channel.users ?? [], [channel.users]);
 
+  // Active voice users first, then offline/not-in-voice users
+  const activeUsers = users.filter(u => u.isInVoice !== false);
+  const idleUsers   = users.filter(u => u.isInVoice === false);
+
   return (
     <div className="text-gray-300">
       {showHeader && (
@@ -56,7 +61,8 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
 
       {(!showHeader || expanded) && (
         <div className="mt-1 space-y-0.5" style={{ paddingLeft: indent }}>
-          {users.map((u) => {
+          {/* Active voice users */}
+          {activeUsers.map((u) => {
             const statusClass = STATUS_COLOR[(u.status ?? 'offline').toLowerCase()] ?? STATUS_COLOR.offline;
             return (
               <div
@@ -93,6 +99,34 @@ const VoiceChannelList: React.FC<{ channel: VoiceChannel; showHeader?: boolean; 
                     <MicOff size={12} />
                   </span>
                 ) : null}
+              </div>
+            );
+          })}
+
+          {/* Not-in-voice members — dimmed, no mic icons */}
+          {idleUsers.map((u) => {
+            const statusClass = STATUS_COLOR[(u.status ?? 'offline').toLowerCase()] ?? STATUS_COLOR.offline;
+            return (
+              <div
+                key={u.id}
+                className="flex items-center gap-2 px-2 py-0.5 rounded-md opacity-40"
+              >
+                <div className="relative w-5 h-5 flex-shrink-0">
+                  <div
+                    className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center text-[9px] font-bold text-white"
+                    style={{ backgroundColor: u.avatarUrl ? 'transparent' : colorFor(u.username) }}
+                  >
+                    {u.avatarUrl ? (
+                      <img src={u.avatarUrl} alt={u.username} className="w-full h-full object-cover" />
+                    ) : (
+                      initialsFor(u.username)
+                    )}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-surface-900 ${statusClass}`} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] truncate text-gray-400">{u.username}</div>
+                </div>
               </div>
             );
           })}

@@ -520,6 +520,7 @@ const TeamsPage: React.FC = () => {
   const [formDesc, setFormDesc] = useState('');
   const [formIcon, setFormIcon] = useState(TEAM_ICONS[0]);
   const [formColor, setFormColor] = useState('#6247ea');
+  const [formOwnerId, setFormOwnerId] = useState('');
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [addMemberTeam, setAddMemberTeam] = useState<typeof teams[0] | null>(null);
@@ -539,9 +540,9 @@ const TeamsPage: React.FC = () => {
 
   const canManageTeam = (team: Team) => {
     if (isDirector) return true;
-    if (!isManager) return false;
-    const myId = me?.id ?? '';
-    return team.ownerId === myId || team.members.includes(myId);
+    // Manager and Admin can only manage teams they own
+    if (isManager || isAdmin) return team.ownerId === (me?.id ?? '');
+    return false;
   };
 
   const canCreateTeam = isDirector || isManager;
@@ -561,6 +562,7 @@ const TeamsPage: React.FC = () => {
     setFormDesc('');
     setFormIcon(TEAM_ICONS[0]);
     setFormColor('#6247ea');
+    setFormOwnerId(me?.id ?? '');
     setShowModal(true);
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate]);
@@ -573,13 +575,18 @@ const TeamsPage: React.FC = () => {
     if (manageMembersTeamId && !manageMembersTeam) setManageMembersTeamId(null);
   }, [manageMembersTeamId, manageMembersTeam]);
 
-  const openCreate = () => { setEditingId(null); setFormName(''); setFormDesc(''); setFormIcon(TEAM_ICONS[0]); setFormColor('#6247ea'); setShowModal(true); };
-  const openEdit = (team: typeof teams[0]) => { setEditingId(team.id); setFormName(team.name); setFormDesc(team.description); setFormIcon(team.icon || TEAM_ICONS[0]); setFormColor(team.color || '#6247ea'); setShowModal(true); };
+  const openCreate = () => { setEditingId(null); setFormName(''); setFormDesc(''); setFormIcon(TEAM_ICONS[0]); setFormColor('#6247ea'); setFormOwnerId(me?.id ?? ''); setShowModal(true); };
+  const openEdit = (team: typeof teams[0]) => { setEditingId(team.id); setFormName(team.name); setFormDesc(team.description); setFormIcon(team.icon || TEAM_ICONS[0]); setFormColor(team.color || '#6247ea'); setFormOwnerId(team.ownerId); setShowModal(true); };
 
   const handleSave = () => {
     if (!formName.trim()) return;
-    if (editingId) dispatch(updateTeam({ id: editingId, name: formName, description: formDesc, icon: formIcon, color: formColor }));
-    else dispatch(createTeam({ name: formName, description: formDesc, icon: formIcon, color: formColor }));
+    if (editingId) {
+      const editingTeam = teams.find(t => t.id === editingId);
+      const ownerChanged = isAdmin && formOwnerId && formOwnerId !== editingTeam?.ownerId;
+      dispatch(updateTeam({ id: editingId, name: formName, description: formDesc, icon: formIcon, color: formColor, ...(ownerChanged ? { ownerId: formOwnerId } : {}) }));
+    } else {
+      dispatch(createTeam({ name: formName, description: formDesc, icon: formIcon, color: formColor }));
+    }
     setShowModal(false);
   };
 
@@ -805,7 +812,48 @@ const TeamsPage: React.FC = () => {
           </div>
         </div>
         <Input label="Description" placeholder="What is this team about?" value={formDesc} onChange={(e) => setFormDesc(e.target.value)} />
-        <div className="flex justify-end gap-2 mt-2">
+
+        {/* Owner field — admin only, edit mode only */}
+        {isAdmin && editingId && (
+          <div className="mt-3">
+            <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">
+              Owner
+            </label>
+            <div className="relative">
+              <select
+                value={formOwnerId}
+                onChange={(e) => setFormOwnerId(e.target.value)}
+                className="w-full bg-surface-100 dark:bg-surface-800 border border-subtle rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-brand-500 appearance-none cursor-pointer"
+              >
+                {allUsers.filter(u => u.role === 'manager' || u.role === 'director').map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} — {u.role}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            {formOwnerId && (
+              <div className="flex items-center gap-2 mt-2 p-2 bg-surface-50 dark:bg-surface-800/50 rounded-lg border border-subtle">
+                <Avatar user={allUsers.find(u => u.id === formOwnerId)!} size="xs" showStatus={false} />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold text-gray-900 dark:text-gray-100 truncate">
+                    {allUsers.find(u => u.id === formOwnerId)?.name}
+                  </p>
+                  <p className="text-[10px] text-gray-400 capitalize">
+                    {allUsers.find(u => u.id === formOwnerId)?.role}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
           <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
           <Button onClick={handleSave}>{editingId ? 'Save Changes' : 'Create Team'}</Button>
         </div>

@@ -3,6 +3,7 @@ import authReducer from './slices/authSlice';
 import chatReducer from './slices/chatSlice';
 import teamReducer from './slices/teamSlice';
 import notificationReducer from './slices/notificationSlice';
+import activeVoiceReducer from './slices/activeVoiceSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     chat: chatReducer,
     teams: teamReducer,
     notifications: notificationReducer,
+    activeVoice: activeVoiceReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

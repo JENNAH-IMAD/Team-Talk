@@ -26,7 +26,7 @@ export const createTeam = createAsyncThunk(
 
 export const updateTeam = createAsyncThunk(
   'teams/updateTeam',
-  async ({ id, ...payload }: { id: string; name?: string; description?: string; icon?: string; color?: string }) => {
+  async ({ id, ...payload }: { id: string; name?: string; description?: string; icon?: string; color?: string; ownerId?: string }) => {
     const { data } = await apiClient.put(`/teams/${id}`, payload);
     return data as Team;
   }

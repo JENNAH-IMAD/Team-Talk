@@ -8,15 +8,15 @@ import {
 } from 'lucide-react';
 import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
 import { Avatar } from '@/components/ui';
-import { MessageBubble, GifPicker } from '@/components/shared';
+import { MessageBubble, GifPicker, FilePreviewCard } from '@/components/shared';
 import VideoLayout, { type Participant } from '@/components/shared/VideoLayout';
 import VoiceCallOverlay from '@/components/shared/VoiceCallOverlay';
 import apiClient from '@/services/apiClient';
 import { signalRService, useSignalRVersion } from '@/services/signalRService';
 import { useAuth } from '@/hooks';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
-import { cn, getUserRoles } from '@/utils';
-import type { User, Message } from '@/types';
+import { cn, getUserRoles, getAvatarColor } from '@/utils';
+import type { User, Message, PendingAttachment } from '@/types';
 
 const API_BASE = (import.meta.env.VITE_API_URL as string || '/api').replace(/\/api$/, '');
 const CALL_STORAGE_KEY = 'teamtalk.activeCall';
@@ -416,6 +416,8 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
     const meUser = usersMap[meId];
     const meName = meUser?.name ?? 'Vous';
     const me = ensure('local', meName, meUser?.avatarUrl, muted);
+    me.isMe = true;
+    me.color = getAvatarColor(meId);
     if (videoOn && localCamStream) me.streams.push({ type: 'camera', stream: localCamStream });
     if (screenOn && localScreenStream) {
       me.streams.push({ type: 'screen', stream: localScreenStream, screenIndex: 1 });
@@ -490,6 +492,7 @@ const GroupVoicePanel: React.FC<GroupVoicePanelProps> = ({ channelId, meId, user
             speakerOff={speakerOff}
             cameraOn={videoOn}
             screenOn={screenOn}
+            audioLayout="tiles"
           />
         ) : (
           <div className="px-4 pb-3">
@@ -529,7 +532,7 @@ const DMConversation: React.FC<DmConversationProps> = ({
   const [mentionSuggestions, setMentionSuggestions] = useState<User[]>([]);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const inputRef                   = useRef<HTMLInputElement>(null);
-  const [attachments, setAttachments] = useState<{ url: string; name: string; type: string }[]>([]);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef               = useRef<HTMLInputElement>(null);
   const channelIdRef               = useRef<string | null>(null);
@@ -615,13 +618,20 @@ const DMConversation: React.FC<DmConversationProps> = ({
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     setUploading(true);
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
     try {
       const form = new FormData(); form.append('file', file);
-      const { data } = await apiClient.post<{ url: string; fileName: string; contentType: string }>(
+      const { data } = await apiClient.post<{ url: string; fileName: string; contentType: string; size: number; filePath: string }>(
         '/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-      setAttachments(prev => [...prev, { url: data.url, name: data.fileName, type: data.contentType }]);
-    } catch { /* ignore */ } finally {
+      setAttachments(prev => [...prev, {
+        filePath: data.filePath,
+        fileName: data.fileName,
+        contentType: data.contentType,
+        fileSize: data.size,
+        previewUrl,
+      }]);
+    } catch { if (previewUrl) URL.revokeObjectURL(previewUrl); } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -635,14 +645,20 @@ const DMConversation: React.FC<DmConversationProps> = ({
   };
 
   const handleSend = useCallback(async () => {
-    if (!text.trim() || sending || !channelId) return;
+    if ((!text.trim() && attachments.length === 0) || sending || !channelId) return;
     const content = text.trim();
-    setText(''); setSending(true);
+    const pendingAttachments = attachments.length > 0 ? attachments.map(a => ({
+      filePath: a.filePath, fileName: a.fileName, contentType: a.contentType, fileSize: a.fileSize,
+    })) : undefined;
+    setText('');
+    attachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+    setAttachments([]);
+    setSending(true);
     try {
-      const { data } = await apiClient.post<Message>(`/channels/${channelId}/messages`, { content });
+      const { data } = await apiClient.post<Message>(`/channels/${channelId}/messages`, { content, attachments: pendingAttachments });
       setMessages(prev => [...prev, data]);
     } catch { setText(content); } finally { setSending(false); }
-  }, [text, sending, channelId]);
+  }, [text, sending, channelId, attachments]);
 
   const renderMessage = (msg: Message) => {
     const voiceMatch = msg.content.match(/\[🎤 Voice Message\]\(([^)]+)\)/);
@@ -736,11 +752,23 @@ const DMConversation: React.FC<DmConversationProps> = ({
 
       {/* Input */}
       <div className="p-4 border-t border-subtle bg-white dark:bg-surface-900 flex-shrink-0">
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {attachments.map((att, i) => (
+              <FilePreviewCard key={i} file={att} onRemove={() => {
+                setAttachments(prev => {
+                  if (prev[i]?.previewUrl) URL.revokeObjectURL(prev[i].previewUrl!);
+                  return prev.filter((_, j) => j !== i);
+                });
+              }} />
+            ))}
+          </div>
+        )}
         <div className="relative flex items-end gap-2 bg-surface-100 dark:bg-surface-800 rounded-xl px-3.5 py-2.5 border border-subtle focus-within:border-brand-500/40 transition-colors">
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,video/mp4,application/pdf,audio/*"
+            accept="image/*,video/*,application/pdf,application/zip,.zip,.docx,.xlsx,.pptx,audio/*"
             className="hidden"
             onChange={handleFileSelect}
           />
@@ -803,10 +831,10 @@ const DMConversation: React.FC<DmConversationProps> = ({
             </div>
             <button
               onClick={handleSend}
-              disabled={!text.trim() || sending || recording}
+              disabled={(!text.trim() && attachments.length === 0) || sending || recording}
               className={cn(
                 'w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0',
-                text.trim() && !sending && !recording
+                (text.trim() || attachments.length > 0) && !sending && !recording
                   ? 'bg-brand-500 hover:bg-brand-600 text-white'
                   : 'bg-surface-200 dark:bg-surface-700 text-gray-400 cursor-not-allowed'
               )}
@@ -845,6 +873,9 @@ const GroupConversation: React.FC<GroupConversationProps> = ({ group, me, allUse
   const [showGif, setShowGif]     = useState(false);
   const [showVoicePanel] = useState(true);
   const [voiceHeight, setVoiceHeight] = useState(360);
+  const [groupAttachments, setGroupAttachments] = useState<PendingAttachment[]>([]);
+  const [groupUploading, setGroupUploading] = useState(false);
+  const groupFileInputRef = useRef<HTMLInputElement>(null);
   const voiceDragging = useRef(false);
   const voiceAnchor = useRef({ startY: 0, startH: 0 });
   const emojiRef = useRef<HTMLDivElement>(null);
@@ -904,6 +935,25 @@ const GroupConversation: React.FC<GroupConversationProps> = ({ group, me, allUse
     inputRef.current?.focus();
   };
 
+  const handleGroupFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setGroupUploading(true);
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
+    try {
+      const form = new FormData(); form.append('file', file);
+      const { data } = await apiClient.post<{ url: string; fileName: string; contentType: string; size: number; filePath: string }>(
+        '/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      setGroupAttachments(prev => [...prev, {
+        filePath: data.filePath, fileName: data.fileName,
+        contentType: data.contentType, fileSize: data.size, previewUrl,
+      }]);
+    } catch { if (previewUrl) URL.revokeObjectURL(previewUrl); } finally {
+      setGroupUploading(false);
+      if (groupFileInputRef.current) groupFileInputRef.current.value = '';
+    }
+  };
+
   // Voice message upload
   const uploadVoice = async (blob: Blob) => {
     if (sending) return;
@@ -931,14 +981,20 @@ const GroupConversation: React.FC<GroupConversationProps> = ({ group, me, allUse
   const { recording, duration, start: startRecording, stop: stopRecording } = useVoiceRecorder(uploadVoice);
 
   const handleSend = useCallback(async () => {
-    if (!text.trim() || sending) return;
+    if ((!text.trim() && groupAttachments.length === 0) || sending) return;
     const content = text.trim();
-    setText(''); setSending(true);
+    const pendingAtts = groupAttachments.length > 0 ? groupAttachments.map(a => ({
+      filePath: a.filePath, fileName: a.fileName, contentType: a.contentType, fileSize: a.fileSize,
+    })) : undefined;
+    setText('');
+    groupAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+    setGroupAttachments([]);
+    setSending(true);
     try {
-      const { data } = await apiClient.post<Message>(`/channels/${group.channelId}/messages`, { content });
+      const { data } = await apiClient.post<Message>(`/channels/${group.channelId}/messages`, { content, attachments: pendingAtts });
       setMessages(prev => [...prev, data]);
     } catch { setText(content); } finally { setSending(false); }
-  }, [text, sending, group.channelId]);
+  }, [text, sending, group.channelId, groupAttachments]);
 
   const renderMessage = (msg: Message) => {
     const sender = allUsers.find(u => u.id === msg.userId) ?? me;
@@ -1019,7 +1075,33 @@ const GroupConversation: React.FC<GroupConversationProps> = ({ group, me, allUse
       </div>
 
             <div className="p-4 border-t border-subtle bg-white dark:bg-surface-900 flex-shrink-0">
+        <input
+          ref={groupFileInputRef}
+          type="file"
+          accept="image/*,video/*,application/pdf,application/zip,.zip,.docx,.xlsx,.pptx,audio/*"
+          className="hidden"
+          onChange={handleGroupFileSelect}
+        />
+        {groupAttachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {groupAttachments.map((att, i) => (
+              <FilePreviewCard key={i} file={att} onRemove={() => {
+                setGroupAttachments(prev => {
+                  if (prev[i]?.previewUrl) URL.revokeObjectURL(prev[i].previewUrl!);
+                  return prev.filter((_, j) => j !== i);
+                });
+              }} />
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2 bg-surface-100 dark:bg-surface-800 rounded-xl px-3.5 py-2.5 border border-subtle focus-within:border-brand-500/40 transition-colors">
+          <button
+            onClick={() => groupFileInputRef.current?.click()}
+            disabled={groupUploading || recording}
+            className="p-1 text-gray-400 hover:text-brand-500 transition-colors flex-shrink-0 mb-0.5"
+          >
+            <Paperclip size={17} className={groupUploading ? 'animate-pulse text-brand-500' : ''} />
+          </button>
           <button
             onMouseDown={startRecording}
             onMouseUp={stopRecording}
@@ -1066,9 +1148,9 @@ const GroupConversation: React.FC<GroupConversationProps> = ({ group, me, allUse
               )}
             </div>
 
-            <button onClick={handleSend} disabled={!text.trim() || sending || recording}
+            <button onClick={handleSend} disabled={(!text.trim() && groupAttachments.length === 0) || sending || recording}
               className={cn('w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0',
-                text.trim() && !sending && !recording
+                (text.trim() || groupAttachments.length > 0) && !sending && !recording
                   ? 'bg-brand-500 hover:bg-brand-600 text-white'
                   : 'bg-surface-200 dark:bg-surface-700 text-gray-400 cursor-not-allowed'
               )}>

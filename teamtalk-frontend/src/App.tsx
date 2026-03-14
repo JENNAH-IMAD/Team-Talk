@@ -22,7 +22,7 @@ const AuthBootstrap: React.FC = () => {
 const App: React.FC = () => {
   return (
     <Provider store={store}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthBootstrap />
         <AppRoutes />
         <Toaster
