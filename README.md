@@ -10,19 +10,20 @@ TeamTalk est une plateforme de communication d'entreprise full-stack conçue pou
 |--------|-------------|
 | **Frontend** | React 18, TypeScript 5, Vite 5, Tailwind CSS 3, Redux Toolkit, Framer Motion |
 | **Backend** | .NET 9 (Clean Architecture), ASP.NET Core, SignalR, JWT Bearer |
-| **Base de données** | PostgreSQL 15 via Npgsql + Entity Framework Core 9 |
+| **Base de données** | PostgreSQL 16 via Npgsql + Entity Framework Core 9 |
 | **Temps réel** | SignalR (chat, voix, présence, notifications) |
 | **Média** | WebRTC (voix/vidéo/partage d'écran), Giphy API (GIFs/Stickers/Clips) |
+| **Conteneurisation** | Docker, Docker Compose, Nginx |
 
 ---
 
 ## Fonctionnalités
 
-- **Authentification** — Inscription/connexion JWT, refresh token, rôles hiérarchiques
-- **Équipes & Canaux** — Création, gestion des membres, canaux texte et vocaux, privés/publics
+- **Authentification** — Inscription/connexion JWT, rôles hiérarchiques
+- **Équipes & Canaux** — Création, gestion membres, canaux texte et vocaux
 - **Chat temps réel** — Messages, réactions emoji, édition/suppression, réponses, mentions `@user`
 - **Pièces jointes** — Upload fichiers (images, vidéos, PDF, ZIP, Office), preview intégré
-- **GIF Picker** — Giphy API : GIFs, Stickers, Clips, favoris localStorage
+- **GIF Picker** — Giphy API : GIFs, Stickers, Clips, favoris
 - **Messages directs** — DMs 1-to-1 et groupes, appels audio/vidéo
 - **Voix/Vidéo** — Canaux vocaux multi-participants WebRTC, partage d'écran, mute/sourd
 - **Notifications** — Centre de notifications temps réel
@@ -40,36 +41,55 @@ TeamTalk est une plateforme de communication d'entreprise full-stack conçue pou
 
 ---
 
-## Structure du projet
+## Docker Hub
 
+Les images sont publiées sur Docker Hub :
+
+| Image | Lien |
+|-------|------|
+| Backend (.NET 9) | `bluekayn11/teamtalk-backend:latest` |
+| Frontend (Nginx) | `bluekayn11/teamtalk-frontend:latest` |
+
+---
+
+## Démarrage avec Docker (recommandé)
+
+### Prérequis
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop)
+
+### Lancer le projet complet
+
+```bash
+docker compose up -d
 ```
-TeamTalk-platform/
-├── teamtalk-frontend/          React + TypeScript + Vite
-│   ├── src/
-│   │   ├── features/           Domaines : auth, chat, teams, messages, notifications, users
-│   │   ├── components/         Composants partagés (MessageBubble, GifPicker, VideoLayout…)
-│   │   ├── store/slices/       Redux : auth, chat, teams, notifications, activeVoice
-│   │   ├── services/           signalRService, apiClient
-│   │   ├── hooks/              Hooks personnalisés
-│   │   ├── layouts/            DashboardLayout, AuthLayout
-│   │   ├── types/              Types TypeScript globaux
-│   │   └── utils/              Helpers, gestion des rôles
-│   ├── .env.example
-│   └── package.json
-│
-└── teamtalk-backend/           .NET 9 Clean Architecture
-    ├── src/
-    │   ├── Domain/             Entités, enums, interfaces
-    │   ├── Application/        DTOs, services, validateurs FluentValidation, AutoMapper
-    │   ├── Infrastructure/     EF Core, repositories, JWT, migrations
-    │   └── WebAPI/             Controllers REST, ChatHub SignalR, middlewares
-    ├── docker-compose.yml      PostgreSQL + API
-    └── Dockerfile
+
+C'est tout. Docker télécharge les images depuis Docker Hub et démarre les 3 containers.
+
+| Container | Port | Description |
+|-----------|------|-------------|
+| `teamtalk-postgres` | 5432 | Base de données PostgreSQL |
+| `teamtalk-backend` | 5001 | API REST + SignalR Hub |
+| `teamtalk-frontend` | 3000 | Application React (Nginx) |
+
+- Application : http://localhost:3000
+- API / Swagger : http://localhost:5001/swagger
+
+### Arrêter les containers
+
+```bash
+docker compose down
+```
+
+### Supprimer aussi les volumes (base de données)
+
+```bash
+docker compose down -v
 ```
 
 ---
 
-## Démarrage rapide
+## Démarrage en mode développement (local)
 
 ### Prérequis
 
@@ -77,31 +97,36 @@ TeamTalk-platform/
 - [Node.js 20+](https://nodejs.org)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
-### 1 — Backend
+### 1 — Base de données
 
 ```bash
 cd teamtalk-backend
-docker-compose up -d
+docker compose up postgres -d
+```
+
+### 2 — Backend
+
+```bash
+cd teamtalk-backend
+dotnet run --project src/WebAPI
 ```
 
 - API REST : http://localhost:5001
 - Swagger : http://localhost:5001/swagger
 - SignalR Hub : ws://localhost:5001/hubs/chat
 
-### 2 — Frontend
+### 3 — Frontend
 
 ```bash
 cd teamtalk-frontend
-cp .env.example .env      # puis renseigner les clés
+cp .env.example .env
 npm install
 npm run dev
 ```
 
 - Application : http://localhost:3000
 
-### 3 — Variables d'environnement (frontend)
-
-Créer `teamtalk-frontend/.env` à partir de `.env.example` :
+### Variables d'environnement (frontend)
 
 ```env
 VITE_API_URL=http://localhost:5001/api
@@ -109,7 +134,38 @@ VITE_SIGNALR_URL=http://localhost:5001/hubs/chat
 VITE_GIPHY_API_KEY=your_giphy_api_key_here
 ```
 
-> Obtenir une clé Giphy gratuite sur [developers.giphy.com](https://developers.giphy.com) — choisir **API** (pas SDK).
+> Clé Giphy gratuite sur [developers.giphy.com](https://developers.giphy.com) — choisir **API**.
+
+---
+
+## Structure du projet
+
+```
+TeamTalk-platform/
+├── docker-compose.yml              Orchestration complète (postgres + backend + frontend)
+│
+├── teamtalk-frontend/              React + TypeScript + Vite
+│   ├── Dockerfile                  Build Vite → Nginx
+│   ├── nginx.conf                  Reverse proxy vers le backend
+│   ├── .env.example                Template des variables d'environnement
+│   └── src/
+│       ├── features/               auth, chat, teams, messages, notifications, users
+│       ├── components/             MessageBubble, GifPicker, VideoLayout, FilePreviewCard…
+│       ├── store/slices/           auth, chat, teams, notifications, activeVoice
+│       ├── services/               signalRService, apiClient
+│       ├── hooks/                  Hooks personnalisés
+│       ├── layouts/                DashboardLayout, AuthLayout
+│       ├── types/                  Types TypeScript globaux
+│       └── utils/                  Helpers
+│
+└── teamtalk-backend/               .NET 9 Clean Architecture
+    ├── Dockerfile                  Build multi-stage .NET 9
+    └── src/
+        ├── Domain/                 Entités, enums, interfaces
+        ├── Application/            DTOs, services, FluentValidation, AutoMapper
+        ├── Infrastructure/         EF Core, repositories, JWT, migrations
+        └── WebAPI/                 Controllers REST, ChatHub SignalR, middlewares
+```
 
 ---
 
@@ -123,15 +179,8 @@ VITE_GIPHY_API_KEY=your_giphy_api_key_here
 
 ---
 
-## Configuration backend
+## Notes
 
-La base de données et JWT sont configurés dans `teamtalk-backend/docker-compose.yml`.
-Les migrations EF Core s'appliquent automatiquement au démarrage (`DbSeeder`).
-
----
-
-## Notes de développement
-
-- Les fichiers `bin/`, `obj/`, `dist/`, `node_modules/` sont exclus du dépôt via `.gitignore`
-- Les uploads utilisateurs sont dans `teamtalk-backend/src/WebAPI/wwwroot/uploads/` (exclu du dépôt)
-- Ne jamais committer le fichier `.env` (contient les clés API)
+- Les fichiers `bin/`, `obj/`, `dist/`, `node_modules/` sont exclus du dépôt
+- Les uploads utilisateurs (`wwwroot/uploads/`) sont persistés dans un volume Docker
+- Ne jamais committer le fichier `.env`
