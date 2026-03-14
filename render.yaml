@@ -1,0 +1,50 @@
+databases:
+  - name: teamtalk-db
+    databaseName: teamtalk_platform
+    user: postgres
+    plan: free
+
+services:
+  # ── Backend API ───────────────────────────────────────────
+  - type: web
+    name: teamtalk-backend
+    runtime: docker
+    dockerfilePath: ./teamtalk-backend/Dockerfile
+    dockerContext: ./teamtalk-backend
+    plan: free
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_URLS
+        value: http://+:80
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: teamtalk-db
+          property: connectionString
+      - key: Jwt__Key
+        value: TeamTalkSuperSecretKey2024MustBe32CharsLong!
+      - key: Jwt__Issuer
+        value: TeamTalk
+      - key: Jwt__Audience
+        value: TeamTalkUsers
+      - key: CORS_ORIGINS
+        value: https://teamtalk-frontend.onrender.com
+
+  # ── Frontend Static Site ──────────────────────────────────
+  - type: web
+    name: teamtalk-frontend
+    runtime: static
+    buildCommand: cd teamtalk-frontend && npm ci && npx vite build
+    staticPublishPath: teamtalk-frontend/dist
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        value: https://teamtalk-backend.onrender.com/api
+      - key: VITE_SIGNALR_URL
+        value: https://teamtalk-backend.onrender.com/hubs/chat
+      - key: VITE_GIPHY_API_KEY
+        value: 4UlVBW8LN3ADCX5HUEF4UXA5azKg6op4
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -130,11 +130,23 @@ public static class ServiceExtensions
         services.AddCors(options =>
         {
             options.AddPolicy("AllowFrontend", builder =>
+            {
+                var extraOrigins = Environment.GetEnvironmentVariable("CORS_ORIGINS")
+                    ?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? [];
+
+                var origins = new[]
+                {
+                    "http://localhost:3000",
+                    "http://localhost:3001",
+                    "http://localhost:5173"
+                }.Concat(extraOrigins).ToArray();
+
                 builder
-                    .WithOrigins("http://localhost:3000", "http://localhost:3001", "http://localhost:5173")
+                    .WithOrigins(origins)
                     .AllowAnyMethod()
                     .AllowAnyHeader()
-                    .AllowCredentials());
+                    .AllowCredentials();
+            });
         });
 
         return services;
