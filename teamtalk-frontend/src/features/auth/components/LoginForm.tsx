@@ -125,7 +125,7 @@ export const LoginForm: React.FC = () => {
         transition={{ duration: 0.5, delay: 0.3 }}
       >
         <p className="text-center text-[11px] text-gray-400 mt-4">
-          Demo: sarah@company.com / password123
+          Demo: salma@company.com / password123
         </p>
         <p className="text-center text-[11px] text-gray-400 mt-2">
           Don't have an account?{' '}
