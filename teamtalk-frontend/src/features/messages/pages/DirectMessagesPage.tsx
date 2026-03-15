@@ -1447,9 +1447,10 @@ const DirectMessagesPage: React.FC = () => {
     <div className="flex h-full">
       {/* Left panel — full width on mobile when no convo open, w-72 on desktop */}
       <div className={cn(
-        'border-r border-subtle bg-white dark:bg-surface-900 flex flex-col flex-shrink-0 h-full',
-        'w-full md:w-72',
-        (activeDM || activeGroup) ? 'hidden md:flex' : 'flex',
+        'border-r border-subtle bg-white dark:bg-surface-900 flex-col flex-shrink-0 h-full',
+        (activeDM || activeGroup)
+          ? 'hidden md:flex md:w-72'
+          : 'flex w-full md:w-72',
       )}>
         <div className="p-3 border-b border-subtle">
           <div className="flex items-center gap-2 bg-surface-100 dark:bg-surface-800 rounded-lg px-3 py-1.5 mb-2">
