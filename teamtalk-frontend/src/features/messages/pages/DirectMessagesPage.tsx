@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, MessageSquare, X, Send, Paperclip, Smile, AtSign,
   Phone, Mic, MicOff, Users, Plus, Check, Volume2, VolumeX, PhoneOff,
-  Monitor, MonitorOff, Video, VideoOff,
+  Monitor, MonitorOff, Video, VideoOff, ChevronLeft,
 } from 'lucide-react';
 import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
 import { Avatar } from '@/components/ui';
@@ -703,7 +703,10 @@ const DMConversation: React.FC<DmConversationProps> = ({
       className="flex-1 flex flex-col h-full min-w-0">
 
       {/* Header */}
-      <div className="h-14 border-b border-subtle bg-white dark:bg-surface-900 flex items-center px-5 gap-3 flex-shrink-0">
+      <div className="h-14 border-b border-subtle bg-white dark:bg-surface-900 flex items-center px-4 gap-2 flex-shrink-0">
+        <button onClick={onClose} className="md:hidden p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 transition-colors flex-shrink-0">
+          <ChevronLeft size={18} />
+        </button>
         <Avatar user={peer} size="sm" />
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-[14px] text-gray-900 dark:text-gray-100">{peer.name}</div>
@@ -1027,13 +1030,16 @@ const GroupConversation: React.FC<GroupConversationProps> = ({ group, me, allUse
     <motion.div key={group.channelId} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 24 }} transition={{ duration: 0.2 }}
       className="flex-1 flex flex-col h-full min-w-0">
-      <div className="flex items-center justify-between border-b border-subtle px-4 py-3 bg-white dark:bg-surface-900">
-        <div>
+      <div className="flex items-center gap-2 border-b border-subtle px-4 py-3 bg-white dark:bg-surface-900">
+        <button onClick={onClose} className="md:hidden p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 transition-colors flex-shrink-0">
+          <ChevronLeft size={18} />
+        </button>
+        <div className="flex-1 min-w-0">
           <p className="text-[11px] text-gray-400 uppercase font-bold tracking-wide">Groupe</p>
-          <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 font-display">{group.name}</h3>
+          <h3 className="text-lg font-black text-gray-900 dark:text-gray-100 font-display truncate">{group.name}</h3>
           <p className="text-xs text-gray-500">{group.participants.length} membres</p>
         </div>
-        <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400">
+        <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 flex-shrink-0">
           <X size={16} />
         </button>
       </div>
@@ -1439,8 +1445,12 @@ const DirectMessagesPage: React.FC = () => {
 
   return (
     <div className="flex h-full">
-      {/* Left panel */}
-      <div className="w-72 border-r border-subtle bg-white dark:bg-surface-900 flex flex-col flex-shrink-0 h-full">
+      {/* Left panel — full width on mobile when no convo open, w-72 on desktop */}
+      <div className={cn(
+        'border-r border-subtle bg-white dark:bg-surface-900 flex flex-col flex-shrink-0 h-full',
+        'w-full md:w-72',
+        (activeDM || activeGroup) ? 'hidden md:flex' : 'flex',
+      )}>
         <div className="p-3 border-b border-subtle">
           <div className="flex items-center gap-2 bg-surface-100 dark:bg-surface-800 rounded-lg px-3 py-1.5 mb-2">
             <Search size={13} className="text-gray-400 flex-shrink-0" />
@@ -1521,7 +1531,8 @@ const DirectMessagesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Right panel */}
+      {/* Right panel — hidden on mobile when no convo selected */}
+      <div className={cn('flex-1 min-w-0', !(activeDM || activeGroup) ? 'hidden md:flex' : 'flex')}>
       <AnimatePresence mode="wait">
         {activeDM && me ? (
           <DMConversation
@@ -1555,6 +1566,7 @@ const DirectMessagesPage: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       {/* Modals */}
       <AnimatePresence>
