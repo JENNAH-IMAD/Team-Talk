@@ -39,7 +39,7 @@ const MembersPanel: React.FC<{ users: Record<string, User> }> = ({ users }) => {
   const offline = list.filter((u) => u.status !== 'online');
 
   return (
-    <aside className="w-[240px] bg-white dark:bg-surface-900 border-l border-subtle flex flex-col h-full flex-shrink-0">
+    <aside className="hidden lg:flex w-[240px] bg-white dark:bg-surface-900 border-l border-subtle flex-col h-full flex-shrink-0">
       <div className="px-4 py-3.5 border-b border-subtle">
         <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 font-display">
           Members — {list.length}

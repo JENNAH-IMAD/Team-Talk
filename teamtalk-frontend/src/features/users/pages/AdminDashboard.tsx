@@ -230,7 +230,7 @@ const AdminDashboard: React.FC = () => {
         onCancel={() => setDeactivateTarget(null)}
       />
 
-      <div className="flex-1 overflow-y-auto p-8 font-body">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 font-body">
         <div className="max-w-5xl">
           <motion.h2
             initial={{ opacity: 0, y: -8 }}
@@ -241,7 +241,7 @@ const AdminDashboard: React.FC = () => {
           </motion.h2>
 
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-3.5 mb-7">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 mb-7">
             {statCards.map((s, i) => (
               <motion.div
                 key={s.label}
@@ -271,7 +271,7 @@ const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Charts row */}
-          <div className="grid grid-cols-[2fr_1fr] gap-3.5 mb-7">
+          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3.5 mb-7">
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}

@@ -593,7 +593,7 @@ const TeamsPage: React.FC = () => {
   const filtered = teams.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 font-body">
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 font-body">
       <div className="max-w-4xl">
         <div className="flex items-center justify-between mb-6">
           <div>

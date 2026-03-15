@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Hash, Lock, Bell, Search, Sun, Moon, LogOut, Home, MessageSquare,
   Activity, BarChart3, ChevronDown, ChevronRight, Layers, Users,
-  Briefcase, ChevronLeft, Plus, Check, UserCircle, Volume2, Phone, PhoneOff,
+  Briefcase, ChevronLeft, Plus, Check, UserCircle, Volume2, Phone, PhoneOff, Menu,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppSelector, useAppDispatch, useAuth, useTheme, useNotifications, useSignalR } from '@/hooks';
@@ -29,6 +29,12 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; dot: string }[] = [
   { value: 'offline',      label: 'Offline',        dot: 'bg-gray-400'    },
 ];
 const CALL_STORAGE_KEY = 'teamtalk.activeCall';
+
+// ── Mobile Sidebar Context ─────────────────────────────────
+const SidebarCtx = React.createContext<{
+  mobileOpen: boolean;
+  setMobileOpen: (v: boolean) => void;
+}>({ mobileOpen: false, setMobileOpen: () => {} });
 
 // ── Inline Create Channel ──────────────────────────────────
 interface InlineCreateChannelProps {
@@ -99,6 +105,15 @@ const Sidebar: React.FC = () => {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
   });
+  const { mobileOpen, setMobileOpen } = React.useContext(SidebarCtx);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // Start global SignalR connection here so it's active on ALL dashboard pages
   useSignalR();
@@ -272,9 +287,15 @@ const Sidebar: React.FC = () => {
 
   return (
     <motion.aside
-      animate={{ width: collapsed ? 60 : 260 }}
+      animate={{
+        width: isMobile ? 260 : (collapsed ? 60 : 260),
+        x: isMobile && !mobileOpen ? -280 : 0,
+      }}
       transition={{ duration: 0.22, ease: 'easeInOut' }}
-      className="bg-white dark:bg-surface-900 border-r border-subtle flex flex-col h-screen flex-shrink-0 relative overflow-hidden"
+      className={cn(
+        'bg-white dark:bg-surface-900 border-r border-subtle flex flex-col h-screen flex-shrink-0 overflow-hidden',
+        isMobile ? 'fixed inset-y-0 left-0 z-30' : 'relative',
+      )}
     >
       {/* Logo */}
       <div className={cn(
@@ -510,6 +531,7 @@ const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showNotifs, setShowNotifs] = useState(false);
+  const { setMobileOpen } = React.useContext(SidebarCtx);
 
   const getTitle = () => {
     if (location.pathname.startsWith('/dashboard/chat') && channel) return null;
@@ -524,7 +546,13 @@ const Navbar: React.FC = () => {
   const title = getTitle();
 
   return (
-    <header className="h-14 bg-white dark:bg-surface-900 border-b border-subtle flex items-center px-5 gap-3 flex-shrink-0">
+    <header className="h-14 bg-white dark:bg-surface-900 border-b border-subtle flex items-center px-4 gap-3 flex-shrink-0">
+      <button
+        className="md:hidden p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-500 transition-colors flex-shrink-0"
+        onClick={() => setMobileOpen(true)}
+      >
+        <Menu size={18} />
+      </button>
       <div className="flex-1 flex items-center gap-2.5">
         {title ? (
           <h1 className="font-bold text-[15px] text-gray-900 dark:text-gray-100 font-display">{title}</h1>
@@ -589,6 +617,10 @@ export const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user: me } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile sidebar on route change
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
   const restoreAttemptedRef = React.useRef(false);
   const [incomingCall, setIncomingCall] = useState<{ callerId: string; offer: string } | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -692,7 +724,21 @@ export const DashboardLayout: React.FC = () => {
   };
 
   return (
+    <SidebarCtx.Provider value={{ mobileOpen, setMobileOpen }}>
     <div className="flex h-screen overflow-hidden bg-surface-50 dark:bg-surface-950">
+      {/* Mobile backdrop */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/40 z-20 md:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+        )}
+      </AnimatePresence>
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Navbar />
@@ -752,6 +798,7 @@ export const DashboardLayout: React.FC = () => {
         )}
       </AnimatePresence>
     </div>
+    </SidebarCtx.Provider>
   );
 };
 

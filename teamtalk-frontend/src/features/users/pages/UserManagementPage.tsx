@@ -533,7 +533,7 @@ const InviteModal: React.FC<InviteModalProps> = ({ onClose, onInvited }) => {
         </div>
 
         {/* Name row */}
-        <div className="grid grid-cols-2 gap-x-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
           {field('firstName', 'First name', 'Your first name', 'text', 'off')}
           {field('lastName', 'Last name', 'Your last name', 'text', 'off')}
         </div>
@@ -546,7 +546,7 @@ const InviteModal: React.FC<InviteModalProps> = ({ onClose, onInvited }) => {
           <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
             Roles
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {ROLES.map((r) => {
               const active = selectedRoles.has(r.value);
               return (
@@ -760,7 +760,7 @@ const UserManagementPage: React.FC = () => {
         onCancel={() => setDeactivateTarget(null)}
       />
 
-      <div className="flex-1 overflow-y-auto p-8 font-body">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 font-body">
         <div className="max-w-5xl">
 
           {/* Header */}
@@ -875,8 +875,8 @@ const UserManagementPage: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="overflow-y-auto max-h-[520px]">
-                <table className="w-full table-fixed">
+              <div className="overflow-x-auto overflow-y-auto max-h-[520px]">
+                <table className="w-full table-fixed min-w-[600px]">
                   <colgroup>
                     <col style={{ width: '230px' }} />
                     <col style={{ width: '200px' }} />
