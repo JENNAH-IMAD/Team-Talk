@@ -465,10 +465,9 @@ const VideoLayout: React.FC<VideoLayoutProps> = ({
   const renderDiscordGrid = () => {
     const cfg = getGridConfig(tiles.length);
     const count = tiles.length;
-    const tileH = 'min(calc(100vh - 180px), 480px)';
 
-    const mkTile = (t: Tile, wrapStyle?: React.CSSProperties) => (
-      <div key={t.tileId} style={{ borderRadius: 12, overflow: 'hidden', flexShrink: 0, height: tileH, minHeight: 160, ...wrapStyle }}>
+    const mkTile = (t: Tile, style?: React.CSSProperties) => (
+      <div key={t.tileId} style={{ borderRadius: 12, overflow: 'hidden', minWidth: 0, minHeight: 0, ...style }}>
         <VideoTile
           tile={t}
           focused={t.tileId === focusedId}
@@ -484,49 +483,45 @@ const VideoLayout: React.FC<VideoLayoutProps> = ({
       </div>
     );
 
-    const cb: React.CSSProperties = {
-      background: '#1e1f22', padding: 16, display: 'flex',
-      gap: 8, alignItems: 'center', justifyContent: 'center',
-      alignContent: 'center', flexWrap: 'wrap',
-    };
-
-    if (count === 1) return (
-      <div style={cb}>
-        {mkTile(tiles[0], { width: 'min(100%, 860px)', flex: '0 0 auto' })}
-      </div>
-    );
-
-    if (count === 2) return (
-      <div style={{ ...cb, flexWrap: 'nowrap' }}>
-        {tiles.map(t => mkTile(t, { flex: 1, minWidth: 0, height: 'min(calc(100vh - 180px), 360px)' }))}
-      </div>
-    );
-
+    // Special layout: 3 tiles — top row spans full width, bottom row has 2
     if (count === 3) return (
-      <div style={{ ...cb, flexDirection: 'column', alignItems: 'stretch' }}>
-        <div style={{ display: 'flex', gap: 8 }}>{mkTile(tiles[0], { flex: 1 })}</div>
-        <div style={{ display: 'flex', gap: 8 }}>{tiles.slice(1).map(t => mkTile(t, { flex: 1 }))}</div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gridTemplateRows: '1fr 1fr',
+        gap: 8, padding: 16, height: '100%', background: '#1e1f22', boxSizing: 'border-box',
+      }}>
+        {mkTile(tiles[0], { gridColumn: '1 / -1' })}
+        {mkTile(tiles[1])}
+        {mkTile(tiles[2])}
       </div>
     );
 
+    // Special layout: 5 tiles — top row 3, bottom row 2 centered
     if (count === 5) return (
-      <div style={{ ...cb, flexDirection: 'column', alignItems: 'stretch' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {tiles.slice(0, 3).map(t => mkTile(t, { flex: 1 }))}
-        </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          {tiles.slice(3).map(t => mkTile(t, { flex: '0 0 calc(33.333% - 5.333px)' }))}
-        </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr',
+        gridTemplateRows: '1fr 1fr',
+        gap: 8, padding: 16, height: '100%', background: '#1e1f22', boxSizing: 'border-box',
+      }}>
+        {mkTile(tiles[0])}
+        {mkTile(tiles[1])}
+        {mkTile(tiles[2])}
+        {mkTile(tiles[3], { gridColumn: '1 / 2', marginLeft: 'auto', marginRight: 'auto', width: '100%' })}
+        {mkTile(tiles[4], { gridColumn: '3 / 4', marginLeft: 'auto', marginRight: 'auto', width: '100%' })}
       </div>
     );
 
-    // 4, 6, 7-9, 10-16: uniform flex-wrap grid
+    // All other counts: uniform CSS grid that fills the container
     return (
-      <div style={cb}>
-        {tiles.map(t => mkTile(t, {
-          flex: `0 0 calc(${100 / cfg.columns}% - ${(cfg.columns - 1) * 8 / cfg.columns}px)`,
-          minWidth: 0,
-        }))}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${cfg.columns}, 1fr)`,
+        gridTemplateRows: `repeat(${cfg.rows}, 1fr)`,
+        gap: 8, padding: 16, height: '100%', background: '#1e1f22', boxSizing: 'border-box',
+      }}>
+        {tiles.map(t => mkTile(t))}
       </div>
     );
   };
